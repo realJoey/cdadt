@@ -92,19 +92,20 @@ def _optimize(arguments: argparse.Namespace) -> int:
             "succeeded": outcome.succeeded,
             "baseline": outcome.baseline.to_dict(),
             "optimum": outcome.optimum.to_dict(),
-            "requirements": [
+            "constraints": [
                 {
-                    "name": result.requirement.name,
-                    "regulation": result.requirement.regulation,
-                    "title": result.requirement.title,
-                    "source": result.requirement.source,
-                    "limit": result.requirement.limit,
-                    "sense": result.requirement.sense,
+                    "name": result.constraint.name,
+                    "title": result.constraint.title,
+                    "regulation": result.constraint.regulation,
+                    "source": result.constraint.source,
+                    "traceable": result.constraint.is_traceable,
+                    "bound": result.constraint.spec.bounds.describe(),
+                    "units": result.constraint.units,
                     "value": result.value,
                     "margin": result.margin,
                     "status": result.status,
                 }
-                for result in outcome.requirements
+                for result in outcome.constraints
             ],
         }
         arguments.json.write_text(json.dumps(payload, indent=2), encoding="utf-8")

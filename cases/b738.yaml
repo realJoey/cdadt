@@ -4,24 +4,24 @@
 # Sizes a 737-800-class jet transport against a 2800 nmi design mission with a Part 25 reserve
 # diversion and loiter, including the balanced-field takeoff.
 #
-# Every number below is transcribed from OpenConcept's own B738 sizing data file,
-# `openconcept/examples/aircraft_data/B738_sizing.py`, so that this case reproduces the
-# reference example exactly. `tests/test_validation.py` runs that example live and compares.
+# The layout follows OpenConcept's own B738 run scripts block for block:
 #
-# The aircraft is *sized*, not looked up: the black box uses empirical weight and drag buildups
-# and a rubberized engine deck rather than the known weights of the real aeroplane, so changing
-# any parameter here produces a consistent clean-sheet design rather than an inconsistent 737.
+#   design_variables   <- B738.py's `dv_comp.add_output_from_dict(...)` block, whose comment
+#                         reads "Define a bunch of design variables and airplane-specific
+#                         parameters". Add an `optimize:` entry to free one for a driver.
+#   initial_conditions <- B738.py's `set_values(prob, num_nodes)`, using the same names.
+#   continuation       <- the two `run_model()` calls inside B738_sizing.py's
+#                         `set_mission_profile(prob)`, which converge an easy mission first.
+#
+# Every number is transcribed from openconcept/examples/aircraft_data/B738_sizing.py, so this
+# case reproduces the reference example exactly. tests/test_validation.py runs it and compares.
 # =============================================================================================
 
 black_box:
-  # The sizing analysis cdadt drives. Loaded by name; never modified, never subclassed.
   model: openconcept.examples.B738_sizing:B738SizingMissionAnalysis
-  # Analysis points per mission phase. Must be odd (Simpson's rule). The reference example
-  # runs 21.
-  num_nodes: 21
+  num_nodes: 21          # must be odd: the box integrates fuel burn with Simpson's rule
 
 solver:
-  # The Newton solve that closes the weight loop and the mission's own balances together.
   maxiter: 20
   atol: 1.0e-9
   rtol: 1.0e-9
@@ -29,12 +29,12 @@ solver:
   err_on_non_converge: true
 
 # ---------------------------------------------------------------------------------------------
-# Aircraft
+# Design variables
 # ---------------------------------------------------------------------------------------------
-# Sources are the ones OpenConcept's data file records: a technical site, Wikipedia and its own
-# earlier B738 model. They are estimates for a real aeroplane, not measurements, and the
-# `source` field says so.
-aircraft:
+# Every ac| variable the box publishes, with its value and where the number came from. None is
+# freed here: this is a sizing run. See b738_optimization.yaml for the same aeroplane with
+# `optimize:` entries added.
+design_variables:
 
   # -------------------- Aerodynamics --------------------
   ac|aero|polar|e:
@@ -84,7 +84,7 @@ aircraft:
     source: OpenConcept B738_sizing estimate
 
   # -------------------- Horizontal stabilizer --------------------
-  # Its area is not given: the black box sizes it from the tail volume coefficient.
+  # Its area is absent on purpose: the box sizes it from the tail volume coefficient.
   ac|geom|hstab|AR:
     value: 6.16
     source: b737.org.uk technical specifications
@@ -173,70 +173,59 @@ aircraft:
     source: Boeing 737-800 cabin differential
 
 # ---------------------------------------------------------------------------------------------
-# Initial guesses
+# Initial conditions
 # ---------------------------------------------------------------------------------------------
-# Starting points for the states the coupled Newton solve drives. These decide whether the
-# solver converges, not what it converges to; the same values the reference example seeds.
-initial_guesses:
-  ac|weights|MTOW:
-    value: 50.0e3
-    units: kg
+# The direct counterpart of `set_values(prob, num_nodes)`, with the same names. A two-element
+# value is interpolated across the phase, exactly as `np.linspace(2300.0, 400.0, num_nodes)`
+# does there; a single value is constant; a full-length list is used as given.
+initial_conditions:
 
-# ---------------------------------------------------------------------------------------------
-# Mission
-# ---------------------------------------------------------------------------------------------
-mission:
-  parameters:
-    mission_range: {value: 2800, units: nmi}
-    cruise|h0: {value: 35000, units: ft}
-    reserve_range: {value: 200, units: nmi}
-    reserve|h0: {value: 15000, units: ft}
+  # -------------------- Mission-level --------------------
+  mission_range: {value: 2800, units: nmi}
+  cruise|h0:     {value: 35000, units: ft}
+  reserve_range: {value: 200, units: nmi}
+  reserve|h0:    {value: 15000, units: ft}
 
-  schedule:
-    climb:
-      Ueas: {value: [230, 252], units: kn}
-      vs: {value: [2300, 400], units: ft/min}
-    cruise:
-      Ueas: {value: [252, 252], units: kn}
-      vs: {value: 0, units: ft/min}
-    descent:
-      Ueas: {value: [252, 250], units: kn}
-      vs: {value: [-1300, -800], units: ft/min}
-    reserve_climb:
-      Ueas: {value: [230, 230], units: kn}
-      vs: {value: [3000, 2300], units: ft/min}
-    reserve_cruise:
-      Ueas: {value: [250, 250], units: kn}
-      vs: {value: 0, units: ft/min}
-    reserve_descent:
-      Ueas: {value: [250, 250], units: kn}
-      vs: {value: [-800, -800], units: ft/min}
-    loiter:
-      Ueas: {value: 250, units: kn}
-      vs: {value: [0, 0], units: ft/min}
+  # -------------------- Per-phase speed and vertical speed --------------------
+  climb.fltcond|Ueas:           {value: [230, 252], units: kn}
+  climb.fltcond|vs:             {value: [2300, 400], units: ft/min}
+  cruise.fltcond|Ueas:          {value: 252, units: kn}
+  cruise.fltcond|vs:            {value: 0, units: ft/min}
+  descent.fltcond|Ueas:         {value: [252, 250], units: kn}
+  descent.fltcond|vs:           {value: [-1300, -800], units: ft/min}
+  reserve_climb.fltcond|Ueas:   {value: 230, units: kn}
+  reserve_climb.fltcond|vs:     {value: [3000, 2300], units: ft/min}
+  reserve_cruise.fltcond|Ueas:  {value: 250, units: kn}
+  reserve_cruise.fltcond|vs:    {value: 0, units: ft/min}
+  reserve_descent.fltcond|Ueas: {value: 250, units: kn}
+  reserve_descent.fltcond|vs:   {value: -800, units: ft/min}
+  loiter.fltcond|Ueas:          {value: 250, units: kn}
+  loiter.fltcond|vs:            {value: 0, units: ft/min}
 
+  # -------------------- Solver starting points --------------------
   # The ground-roll phases integrate acceleration from a standstill, so their solver needs a
-  # true-airspeed starting guess rather than a schedule.
-  takeoff_speed_guess: {value: 100, units: kn}
+  # true-airspeed guess rather than a schedule. Maximum takeoff weight is an *output* the box
+  # solves for; writing it here is choosing where Newton starts, not choosing the weight.
+  v0v1.fltcond|Utrue: {value: 100, units: kn}
+  v1vr.fltcond|Utrue: {value: 100, units: kn}
+  v1v0.fltcond|Utrue: {value: 100, units: kn}
+  ac|weights|MTOW:    {value: 50.0e3, units: kg}
 
-  # -------------------- Continuation --------------------
-  # The design mission does not converge from a cold start. Each step below is converged in
-  # turn, so the solver enters the next from a converged neighbour. This is the same ladder
-  # OpenConcept's own run script walks, written as data rather than as statements.
-  continuation:
-    - description: short range at low altitude, gentle descent
-      parameters:
-        mission_range: {value: 500, units: nmi}
-        cruise|h0: {value: 5000, units: ft}
-        reserve_range: {value: 100, units: nmi}
-        reserve|h0: {value: 1000, units: ft}
-      schedule:
-        descent:
-          Ueas: {value: [252, 250], units: kn}
-          vs: {value: [-800, -800], units: ft/min}
+# ---------------------------------------------------------------------------------------------
+# Continuation
+# ---------------------------------------------------------------------------------------------
+# The design mission does not converge from a cold start. Each rung is converged in turn, so the
+# solver enters the next from a converged neighbour. This is the ladder B738_sizing.py walks
+# between its two `run_model()` calls, written as data rather than as statements.
+continuation:
+  - description: short range at low altitude, gentle descent
+    initial_conditions:
+      mission_range:      {value: 500, units: nmi}
+      cruise|h0:          {value: 5000, units: ft}
+      reserve_range:      {value: 100, units: nmi}
+      reserve|h0:         {value: 1000, units: ft}
+      descent.fltcond|vs: {value: -800, units: ft/min}
 
-    - description: design range and altitude, still with the gentle descent
-      schedule:
-        descent:
-          Ueas: {value: [252, 250], units: kn}
-          vs: {value: [-800, -800], units: ft/min}
+  - description: design range and altitude, still with the gentle descent
+    initial_conditions:
+      descent.fltcond|vs: {value: -800, units: ft/min}

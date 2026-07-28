@@ -27,23 +27,20 @@ COMPARED = ("MTOW", "OEW", "MLW", "block_fuel", "total_fuel", "takeoff_field_len
 #: be meaningless; looser would fail to detect a real path dependence.
 ROUTE_TOLERANCE = 1e-7
 
-GENTLE_DESCENT = {
-    "Ueas": {"value": [252, 250], "units": "kn"},
-    "vs": {"value": [-800, -800], "units": "ft/min"},
-}
+GENTLE_DESCENT = {"value": [-800, -800], "units": "ft/min"}
 
 
 def _rung(description: str, mission_range: float, altitude: float, reserve: float, reserve_altitude: float) -> dict:
-    """Return one continuation step at the given range and altitude."""
+    """Return one continuation rung at the given range and altitude."""
     return {
         "description": description,
-        "parameters": {
+        "initial_conditions": {
             "mission_range": {"value": mission_range, "units": "nmi"},
             "cruise|h0": {"value": altitude, "units": "ft"},
             "reserve_range": {"value": reserve, "units": "nmi"},
             "reserve|h0": {"value": reserve_altitude, "units": "ft"},
+            "descent.fltcond|vs": GENTLE_DESCENT,
         },
-        "schedule": {"descent": GENTLE_DESCENT},
     }
 
 
@@ -67,15 +64,13 @@ ROUTES: dict[str, list[dict]] = {
 def _run(case: dict, ladder: list[dict] | None, maxiter: int = 60) -> dict[str, float]:
     """Converge the case, optionally replacing its continuation ladder.
 
-    The iteration budget is raised above the shipped case's 20 so that a route is judged on
-    where it arrives rather than on how many Newton steps it needed to get there. Confounding
-    those two is what would turn "this ladder needs more iterations" into a false report of
-    path dependence.
+    The iteration budget is raised above the shipped case's so that a route is judged on where
+    it arrives rather than on how many Newton steps it needed to get there.
     """
     case["black_box"]["num_nodes"] = 11
     case.setdefault("solver", {})["maxiter"] = maxiter
     if ladder is not None:
-        case["mission"]["continuation"] = ladder
+        case["continuation"] = ladder
     results = SizingAnalysis(Config.from_dict(case)).run()
     return {name: float(results[name]) for name in COMPARED}
 
@@ -137,7 +132,12 @@ def test_the_two_shipped_cases_agree_about_the_aircraft(sizing_case, optimizatio
     grid -- which :mod:`tests.test_verification_grid` measures independently at about 3e-5.
     """
     sizing = _run(sizing_case(), None)
-    baseline = SizingAnalysis(Config.from_dict(optimization_case()))
+    coarse = optimization_case()
+    for spec in coarse["design_variables"].values():
+        spec.pop("optimize", None)
+    coarse.pop("objective", None)
+    coarse.pop("constraints", None)
+    baseline = SizingAnalysis(Config.from_dict(coarse))
     baseline.build()
     baseline.converge()
     optimizing = baseline.results()

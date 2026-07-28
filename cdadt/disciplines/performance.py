@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, ClassVar
 
 from cdadt.disciplines.base import Discipline, DisciplineError
-from cdadt.mission import MissionProfile
+from cdadt.mission import ContinuationLadder, InitialConditions
 from cdadt.parameters import Parameter, Response
 
 __all__ = ["Performance"]
@@ -15,40 +15,29 @@ class Performance(Discipline):
     """The mission the aircraft is sized against, and the results of flying it.
 
     The one discipline whose encapsulated state is not a bag of scalars. What performance owns
-    is a :class:`~cdadt.mission.MissionProfile`: the design range, the cruise altitude, the
-    reserve mission, the loiter, the speed and vertical-speed schedule flown in each of the
-    seven steady-flight phases, and the continuation ladder that converges them. Those are
-    design inputs in exactly the sense the geometry parameters are -- change the range and you
-    change the aircraft -- but they are a structured object rather than a list of numbers, so
-    they are held as one.
+    is the pair OpenConcept's run scripts write by hand: the initial conditions
+    (``set_values(prob, num_nodes)``) and the continuation ladder that converges the hard ones
+    (the two ``run_model()`` calls inside ``set_mission_profile``).
 
-    What it reports is everything the mission produces, and it is the discipline the
-    certification requirements are written against: balanced field length and its abort
-    distance, the decision and takeoff safety speeds, the engine-out climb gradient, block fuel
-    and fuel with reserves, the range actually flown, and the throttle history of every phase.
+    What it reports is everything the mission produces, and it is what the certification
+    constraints are written against: balanced field length and its abort distance, the decision
+    and takeoff safety speeds, the engine-out climb gradient, block fuel and fuel with reserves,
+    the range actually flown, and the throttle history of every phase.
 
     Parameters
     ----------
-    profile : MissionProfile
-        The mission and its continuation ladder.
-    num_nodes : int
-        Analysis points per phase, needed to resample the schedules onto the box's grid.
-
-    Notes
-    -----
-    Field length here is OpenConcept's balanced field length: the distance at which continuing
-    the takeoff after an engine failure at V\\ :sub:`1` and rejecting it cover the same ground.
-    The box solves V\\ :sub:`1` implicitly to make that true, so a converged run has
-    ``takeoff_field_length == abort_distance``. A run where they differ has not converged, and
-    the validation suite asserts it.
+    conditions : InitialConditions
+        Everything written into the box before it is converged.
+    ladder : ContinuationLadder, optional
+        The rungs walked first. Empty attempts the design mission directly.
     """
 
     discipline_name: ClassVar[str] = "performance"
     description: ClassVar[str] = "The mission flown, and the field, climb and fuel results it produces"
 
-    #: Performance owns the mission-level parameters. They are held inside the profile rather
+    #: Performance owns the mission-level values. They live in the initial conditions rather
     #: than as loose parameters, so :meth:`add` refuses them; the pattern is declared so that
-    #: the ownership check over the black box's settable variables comes out total.
+    #: the ownership check over the box's settable variables comes out total.
     owned_patterns: ClassVar[tuple[str, ...]] = ("mission.*",)
 
     reported: ClassVar[tuple[Response, ...]] = (
@@ -106,21 +95,21 @@ class Performance(Discipline):
         Response("loiter_duration", "mission.loiter.duration", "min", "Loiter duration, as specified", optional=True),
     )
 
-    def __init__(self, profile: MissionProfile, num_nodes: int) -> None:
-        """Hold the mission profile and the grid it will be resampled onto."""
+    def __init__(self, conditions: InitialConditions, ladder: ContinuationLadder | None = None) -> None:
+        """Hold the initial conditions and the ladder that converges them."""
         super().__init__()
-        self._profile = profile
-        self._num_nodes = int(num_nodes)
+        self._conditions = conditions
+        self._ladder = ladder if ladder is not None else ContinuationLadder()
 
     @property
-    def profile(self) -> MissionProfile:
-        """The mission profile this discipline owns."""
-        return self._profile
+    def conditions(self) -> InitialConditions:
+        """Everything written into the box before it is converged."""
+        return self._conditions
 
     @property
-    def num_nodes(self) -> int:
-        """Analysis points per phase."""
-        return self._num_nodes
+    def ladder(self) -> ContinuationLadder:
+        """The rungs walked before the design mission."""
+        return self._ladder
 
     def add(self, parameter: Parameter) -> None:
         """Reject loose parameters, with an explanation.
@@ -128,30 +117,22 @@ class Performance(Discipline):
         Raises
         ------
         DisciplineError
-            Always. Mission-level values belong in the profile, where they sit alongside the
-            schedules and the continuation ladder that make them reachable.
+            Always. Mission-level values belong in ``initial_conditions``, alongside the
+            schedules and the ladder that make them reachable.
         """
         raise DisciplineError(
             f"'{parameter.name}' cannot be added to the performance discipline as a loose parameter. "
-            f"Mission-level values belong in the mission profile, under 'mission.parameters' in the case file."
+            f"Mission-level values belong under 'initial_conditions' in the case file."
         )
 
     def apply(self, box: Any) -> None:
-        """Write the design mission into the black box, without converging it."""
-        self._profile.apply(box, self._num_nodes)
+        """Write the design conditions into the black box, without converging it."""
+        self._conditions.apply(box)
 
     def converge(self, box: Any, verbose: bool = False) -> None:
-        """Walk the continuation ladder and converge the design mission.
-
-        Parameters
-        ----------
-        box : OpenConceptSizingBox
-            The black box, already built.
-        verbose : bool, optional
-            Print each continuation step as it runs. Default ``False``.
-        """
-        self._profile.converge(box, self._num_nodes, verbose=verbose)
+        """Walk the continuation ladder and converge the design mission."""
+        self._ladder.converge(box, self._conditions, verbose=verbose)
 
     def __repr__(self) -> str:
-        """Return a representation naming the profile and the node count."""
-        return f"Performance({self._profile!r}, num_nodes={self._num_nodes})"
+        """Return a representation naming the conditions and the ladder."""
+        return f"Performance({self._conditions!r}, {self._ladder!r})"

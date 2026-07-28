@@ -129,5 +129,5 @@ def test_reserves_are_carried(converged_analysis):
 def test_the_mission_actually_flown_is_the_one_that_was_asked_for(converged_analysis):
     """The range flown must be the design range, not whatever the solver settled on."""
     results = converged_analysis.results()
-    requested = converged_analysis.config.mission.profile().parameters["mission_range"][0]
+    requested = converged_analysis.config.initial_conditions().values["mission_range"][0]
     assert results["mission_range_flown"] == pytest.approx(requested, rel=1e-6)

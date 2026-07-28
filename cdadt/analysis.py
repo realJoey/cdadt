@@ -1,18 +1,17 @@
 """The sizing analysis: assemble a case, converge it, read it back.
 
 :class:`SizingAnalysis` is the object a case file becomes. It owns the aircraft (which owns the
-airframe disciplines), the performance discipline (which owns the mission), and the black box.
-It builds the box, writes every discipline's state into it, walks the continuation ladder to
-convergence, and reads every discipline's responses back.
+airframe disciplines), the performance discipline (which owns the initial conditions and the
+continuation ladder), and the black box.
 
-The order of operations is not incidental:
+The order of operations is the same one OpenConcept's own run scripts follow, and is not
+incidental:
 
 1. Build the box, running any registration hooks first, because OpenMDAO requires design
    variables, an objective and constraints to be declared before ``setup``.
-2. Write the aircraft parameters and the initial guesses, once. They do not change during the
-   continuation.
-3. Walk the continuation ladder. Each rung is converged before the next is attempted, so the
-   solver always starts from a converged neighbour.
+2. Write every initial condition -- the design variable values and the mission values alike.
+   This is ``set_values(prob, num_nodes)``.
+3. Walk the continuation ladder, converging each rung before attempting the next.
 4. Converge the design mission.
 5. Read every response.
 
@@ -58,8 +57,8 @@ class SizingAnalysis:
             num_nodes=config.black_box.num_nodes,
             solver=config.solver.settings(),
         )
-        self._aircraft = Aircraft(config.aircraft)
-        self._performance = Performance(config.mission.profile(), config.black_box.num_nodes)
+        self._aircraft = Aircraft(config.parameters())
+        self._performance = Performance(config.initial_conditions(), config.continuation)
         self._catalog = ResponseCatalog()
 
     # -- state ---------------------------------------------------------------------------
@@ -81,7 +80,7 @@ class SizingAnalysis:
 
     @property
     def performance(self) -> Performance:
-        """The performance discipline, which owns the mission."""
+        """The performance discipline, which owns the conditions and the ladder."""
         return self._performance
 
     @property
@@ -97,7 +96,7 @@ class SizingAnalysis:
     # -- running -------------------------------------------------------------------------
 
     def build(self, register: Sequence[Callable[[om.Group], None]] = ()) -> None:
-        """Build the black box and write the aircraft into it.
+        """Build the black box and write every initial condition into it.
 
         Parameters
         ----------
@@ -107,23 +106,16 @@ class SizingAnalysis:
 
         Raises
         ------
-        BlackBoxError
-            If a parameter in the case file is not a variable this black box lets a caller set.
-            The check is made against the built model rather than a list, and names every
-            offender at once with suggestions.
+        MissionError
+            If a name in the case file is not something the black box publishes, either on its
+            own or under the mission path.
         """
-        mode = self._config.optimization.derivative_mode if self._config.is_optimization else "auto"
+        mode = self._config.driver.derivative_mode if self._config.is_optimization else "auto"
         self._box.build(register=register, derivative_mode=mode)
 
-        self._box.check_settable([p.name for p in self._config.aircraft] + list(self._config.mission.parameter_names))
-        # Starting guesses are held to a looser standard on purpose: the states that matter
-        # most -- maximum takeoff weight, the fuel load -- are outputs the box solves for, not
-        # inputs it takes, and seeding them is writing where Newton starts.
-        self._box.check_addressable([p.name for p in self._config.initial_guesses])
-
-        self._aircraft.apply(self._box)
-        for guess in self._config.initial_guesses:
-            self._box.set(guess.name, guess.value, units=guess.units)
+        conditions = self._performance.conditions
+        conditions.check(self._box)
+        conditions.apply(self._box)
 
     def converge(self, verbose: bool = False) -> None:
         """Walk the continuation ladder and converge the design mission.
@@ -146,11 +138,6 @@ class SizingAnalysis:
         ----------
         verbose : bool, optional
             Print each continuation step as it runs. Default ``False``.
-
-        Returns
-        -------
-        SizingResults
-            Every response of every discipline.
         """
         self.build()
         self.converge(verbose=verbose)

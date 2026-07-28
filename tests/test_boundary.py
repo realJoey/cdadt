@@ -282,47 +282,22 @@ def test_cdadt_has_no_class_level_mutable_state():
 
 
 @pytest.mark.contract
-def test_the_requirement_catalog_is_instance_state_and_rejects_duplicates():
-    """Two catalogues are independent, and a duplicate ``type`` is refused rather than resolved.
+def test_constraints_are_built_from_the_case_file_rather_than_a_registry():
+    """There is no class-level registry of constraint types, and there is nothing to mutate.
 
-    A registry would have let the later class silently win. A catalogue names both.
+    An earlier design resolved a case file's ``type:`` through a dictionary populated at import
+    time by ``__init_subclass__``. It was shared mutable state: two studies in one process shared
+    it, and what a case file resolved to depended on what had been imported. Constraints are now
+    plain named bounds built straight from the case file, so the question does not arise.
     """
-    from cdadt.certification import (
-        SHIPPED_REQUIREMENTS,
-        BalancedFieldLength,
-        Requirement,
-        RequirementCatalog,
-        RequirementError,
-    )
+    from cdadt import CertificationBasis, ConstraintSpec
+    from cdadt.config import Bounds
 
-    assert not hasattr(Requirement, "registry"), "the class-level registry is back"
-    assert isinstance(SHIPPED_REQUIREMENTS, tuple), "the shipped set must be immutable"
+    basis = CertificationBasis.from_specs([ConstraintSpec("takeoff_field_length", Bounds(upper=8000.0), units="ft")])
+    assert len(basis) == 1
+    assert basis.constraints[0].path == "mission.bfl.distance_continue"
 
-    shipped = {
-        "balanced_field_length",
-        "engine_out_climb_gradient",
-        "throttle_limit",
-        "maximum_takeoff_weight",
-        "design_range",
-        "response_limit",
-    }
-    assert set(RequirementCatalog()) == shipped
+    import cdadt.certification as certification
 
-    class Extra(Requirement):
-        kind = "extra_requirement"
-        response = "MTOW"
-        sense = "upper"
-        title = "An extra requirement"
-
-    # Defining a class changes nothing until a catalogue is asked to include it.
-    assert "extra_requirement" not in RequirementCatalog()
-    wider = RequirementCatalog([*SHIPPED_REQUIREMENTS, Extra])
-    assert "extra_requirement" in wider
-    assert set(RequirementCatalog()) == shipped, "a wider catalogue perturbed the default one"
-
-    class Clashing(Requirement):
-        kind = "balanced_field_length"
-        response = "takeoff_field_length"
-
-    with pytest.raises(RequirementError, match="both call themselves"):
-        RequirementCatalog([BalancedFieldLength, Clashing])
+    assert not hasattr(certification, "Requirement"), "the requirement registry is back"
+    assert not hasattr(certification, "SHIPPED_REQUIREMENTS")

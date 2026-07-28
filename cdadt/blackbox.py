@@ -449,6 +449,18 @@ class OpenConceptSizingBox:
             return False
         return True
 
+    def shape_of(self, name: str) -> tuple[int, ...]:
+        """Return the shape the box declares for ``name``.
+
+        Used to resample an initial condition written as a pair of endpoints onto the grid the
+        box actually declares, which is what ``np.linspace(2300.0, 600.0, num_nodes)`` does by
+        hand in OpenConcept's own run script.
+        """
+        known = self.readable().get(name) or self.settable().get(name)
+        if known is not None:
+            return known.shape
+        return np.atleast_1d(np.asarray(self.get(name))).shape
+
     def check_settable(self, names: Iterable[str]) -> None:
         """Raise if any of ``names`` is not an independent variable of the box.
 

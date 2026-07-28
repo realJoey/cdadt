@@ -98,17 +98,12 @@ def test_structures_owns_no_inputs_and_says_why():
 
 
 @pytest.mark.unit
-def test_performance_refuses_loose_parameters_and_points_at_the_profile():
-    """Mission values belong with the schedules and the ladder that make them reachable."""
-    from cdadt import MissionProfile, PhaseSchedule
-    from cdadt.mission import STEADY_FLIGHT_PHASES
+def test_performance_refuses_loose_parameters_and_points_at_the_case_file():
+    """Mission values belong in ``initial_conditions``, with the ladder that reaches them."""
+    from cdadt import InitialConditions
 
-    profile = MissionProfile(
-        parameters={"mission_range": (2800.0, "nmi")},
-        schedules={phase: PhaseSchedule(250.0, 0.0) for phase in STEADY_FLIGHT_PHASES},
-    )
-    performance = Performance(profile, num_nodes=5)
-    with pytest.raises(DisciplineError, match="belong in the mission profile"):
+    performance = Performance(InitialConditions({"mission_range": (2800.0, "nmi")}))
+    with pytest.raises(DisciplineError, match="belong under 'initial_conditions'"):
         performance.add(Parameter("mission.mission_range", 2800.0))
 
 
@@ -202,26 +197,25 @@ def test_collecting_skips_optional_responses_but_raises_on_required_ones():
 
 
 @pytest.mark.unit
-def test_performance_exposes_the_profile_and_grid_it_owns():
+def test_performance_exposes_the_conditions_and_ladder_it_owns():
     """A performance discipline detached from its mission could not converge or report it."""
-    from cdadt import MissionProfile, PhaseSchedule
-    from cdadt.mission import STEADY_FLIGHT_PHASES
+    from cdadt import ContinuationLadder, ContinuationStep, InitialConditions
 
-    profile = MissionProfile(
-        parameters={"mission_range": (2800.0, "nmi")},
-        schedules={phase: PhaseSchedule(250.0, 0.0) for phase in STEADY_FLIGHT_PHASES},
-    )
-    performance = Performance(profile, num_nodes=11)
-    assert performance.profile is profile
-    assert performance.num_nodes == 11
-    assert repr(performance).startswith("Performance(MissionProfile(")
+    conditions = InitialConditions({"mission_range": (2800.0, "nmi")})
+    ladder = ContinuationLadder([ContinuationStep("easier")])
+    performance = Performance(conditions, ladder)
+    assert performance.conditions is conditions
+    assert performance.ladder is ladder
+    assert repr(performance).startswith("Performance(InitialConditions(")
+
+    # The ladder is optional; without one the design mission is attempted directly.
+    assert len(Performance(conditions).ladder) == 0
 
 
 @pytest.mark.unit
-def test_applying_performance_writes_the_design_mission():
-    """Performance's ``apply`` is the profile's ``apply``, at the grid it was built for."""
-    from cdadt import MissionProfile, PhaseSchedule
-    from cdadt.mission import STEADY_FLIGHT_PHASES
+def test_applying_performance_writes_the_initial_conditions():
+    """Performance's ``apply`` is the conditions' ``apply``: resolved, resampled, with units."""
+    from cdadt import InitialConditions
 
     written = {}
 
@@ -229,13 +223,16 @@ def test_applying_performance_writes_the_design_mission():
         def set(self, name, value, units=None):
             written[name] = (value, units)
 
+        def shape_of(self, name):
+            return (5,) if "fltcond" in name else (1,)
+
+        def has(self, name):
+            return name.startswith("mission.")
+
         def run(self):
             pass
 
-    profile = MissionProfile(
-        parameters={"mission_range": (2800.0, "nmi")},
-        schedules={phase: PhaseSchedule(250.0, 0.0) for phase in STEADY_FLIGHT_PHASES},
-    )
-    Performance(profile, num_nodes=5).apply(Recording())
+    conditions = InitialConditions({"mission_range": (2800.0, "nmi"), "climb.fltcond|Ueas": ([230, 252], "kn")})
+    Performance(conditions).apply(Recording())
     assert written["mission.mission_range"] == (2800.0, "nmi")
-    assert len(written["mission.cruise.fltcond|Ueas"][0]) == 5
+    assert len(written["mission.climb.fltcond|Ueas"][0]) == 5

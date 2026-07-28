@@ -1,43 +1,34 @@
 """cdadt -- a certification-driven aircraft design tool.
 
-cdadt sizes and optimizes an aircraft against an explicit certification basis. The sizing
+cdadt sizes and optimizes an aircraft against an explicit set of constraints. The sizing
 itself -- balanced-field takeoff, climb, cruise, descent, 14 CFR Part 25 reserves and loiter --
 is performed by an OpenConcept analysis used as a **black box**: cdadt sets its inputs,
 converges it, and reads its outputs. No OpenConcept source is modified, no OpenConcept class is
 subclassed, and no cdadt module imports OpenConcept at all; the model is named in the case file
 and loaded by name. See :doc:`/blackbox`.
 
-Everything cdadt contributes is a class: the disciplines that own the interface, the mission
-that is flown, the certification basis that must hold, and the optimizer that drives the box.
+A study is one YAML file, laid out like OpenConcept's own B738 run scripts: ``design_variables``
+is the block ``B738.py`` builds with ``dv_comp.add_output_from_dict(...)``, ``initial_conditions``
+is its ``set_values(prob, num_nodes)``, and ``continuation`` is the ladder inside
+``B738_sizing.py``'s ``set_mission_profile``. Everything cdadt contributes is a class.
 """
 
 from cdadt.aircraft import Aircraft, AircraftError
 from cdadt.analysis import SizingAnalysis
 from cdadt.blackbox import BlackBoxError, OpenConceptSizingBox, SolverSettings, VariableInfo
-from cdadt.certification import (
-    SHIPPED_REQUIREMENTS,
-    BalancedFieldLength,
-    CertificationBasis,
-    DesignRange,
-    EngineOutClimbGradient,
-    MaximumTakeoffWeight,
-    Requirement,
-    RequirementCatalog,
-    RequirementError,
-    RequirementResult,
-    ResponseLimit,
-    ThrottleLimit,
-)
+from cdadt.certification import CertificationBasis, Constraint, ConstraintError, ConstraintResult
 from cdadt.config import (
     BlackBoxConfig,
+    Bounds,
     Config,
     ConfigError,
-    DesignVariableSpec,
-    MissionConfig,
+    ConstraintSpec,
+    DriverConfig,
     ObjectiveSpec,
-    OptimizationConfig,
-    RequirementSpec,
+    OptimizeSpec,
+    Scaling,
     SolverConfig,
+    VariableSpec,
 )
 from cdadt.disciplines import (
     AIRCRAFT_DISCIPLINES,
@@ -51,61 +42,61 @@ from cdadt.disciplines import (
     Structures,
     Weights,
 )
-from cdadt.mission import ContinuationStep, MissionProfile, PhaseSchedule
+from cdadt.mission import (
+    ContinuationLadder,
+    ContinuationStep,
+    InitialConditions,
+    MissionError,
+)
 from cdadt.optimization import OptimizationError, OptimizationOutcome, Optimizer
 from cdadt.parameters import Parameter, Response
 from cdadt.results import ResponseCatalog, SizingResults
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "AIRCRAFT_DISCIPLINES",
-    "SHIPPED_REQUIREMENTS",
     "Aerodynamics",
     "Aircraft",
     "AircraftError",
-    "BalancedFieldLength",
     "BlackBoxConfig",
     "BlackBoxError",
+    "Bounds",
     "CertificationBasis",
     "Config",
     "ConfigError",
+    "Constraint",
+    "ConstraintError",
+    "ConstraintResult",
+    "ConstraintSpec",
+    "ContinuationLadder",
     "ContinuationStep",
-    "DesignRange",
-    "DesignVariableSpec",
     "Discipline",
     "DisciplineError",
-    "EngineOutClimbGradient",
+    "DriverConfig",
     "Geometry",
-    "MaximumTakeoffWeight",
-    "MissionConfig",
-    "MissionProfile",
+    "InitialConditions",
+    "MissionError",
     "ObjectiveSpec",
     "OpenConceptSizingBox",
-    "OptimizationConfig",
     "OptimizationError",
     "OptimizationOutcome",
+    "OptimizeSpec",
     "Optimizer",
     "Parameter",
     "Performance",
-    "PhaseSchedule",
     "Propulsion",
-    "Requirement",
-    "RequirementCatalog",
-    "RequirementError",
-    "RequirementResult",
-    "RequirementSpec",
     "Response",
     "ResponseCatalog",
-    "ResponseLimit",
+    "Scaling",
     "SizingAnalysis",
     "SizingResults",
     "SolverConfig",
     "SolverSettings",
     "Stability",
     "Structures",
-    "ThrottleLimit",
     "VariableInfo",
+    "VariableSpec",
     "Weights",
     "__version__",
 ]

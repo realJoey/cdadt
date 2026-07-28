@@ -8,26 +8,45 @@ import numpy as np
 import pytest
 import yaml
 
-from cdadt import Config, ConfigError, DesignVariableSpec, ObjectiveSpec, PhaseSchedule
-from cdadt.config import MissionConfig, RequirementSpec
-from cdadt.mission import STEADY_FLIGHT_PHASES
+from cdadt import Bounds, Config, ConfigError, ObjectiveSpec, OptimizeSpec, Scaling, VariableSpec
 
 MINIMAL = {
     "black_box": {"model": "some.module:SomeClass", "num_nodes": 11},
-    "aircraft": {"ac|geom|wing|S_ref": {"value": 124.6, "units": "m**2", "source": "specs"}},
-    "mission": {
-        "parameters": {"mission_range": {"value": 2800, "units": "nmi"}},
-        "schedule": {
-            phase: {"Ueas": {"value": 250, "units": "kn"}, "vs": {"value": 0, "units": "ft/min"}}
-            for phase in STEADY_FLIGHT_PHASES
-        },
+    "design_variables": {
+        "ac|geom|wing|S_ref": {"value": 124.6, "units": "m**2", "source": "specs"},
     },
+    "initial_conditions": {
+        "mission_range": {"value": 2800, "units": "nmi"},
+        "climb.fltcond|Ueas": {"value": [230, 252], "units": "kn"},
+    },
+}
+
+OPTIMIZATION = {
+    "driver": {"name": "SLSQP", "maxiter": 25, "tol": 1e-7, "derivative_mode": "fwd"},
+    "objective": {"name": "total_fuel", "units": "kg", "ref": 2e4},
+    "constraints": [
+        {
+            "name": "takeoff_field_length",
+            "upper": 8000,
+            "units": "ft",
+            "regulation": "14 CFR 25.113",
+            "source": "8000 ft dry runway",
+        }
+    ],
 }
 
 
 def _case(**overrides):
-    """Return a copy of the minimal case with the given top-level sections replaced."""
+    """Return a copy of the minimal case with the given top-level sections replaced or added."""
     data = copy.deepcopy(MINIMAL)
+    data.update(copy.deepcopy(overrides))
+    return data
+
+
+def _optimizing(**overrides):
+    """Return a minimal case that also declares an objective and a free design variable."""
+    data = _case(**copy.deepcopy(OPTIMIZATION))
+    data["design_variables"]["ac|geom|wing|S_ref"]["optimize"] = {"lower": 90.0, "upper": 180.0}
     data.update(copy.deepcopy(overrides))
     return data
 
@@ -39,16 +58,16 @@ def _case(**overrides):
 
 @pytest.mark.unit
 def test_a_minimal_case_parses():
-    """Only the optimization section is optional."""
+    """Only ``black_box`` and ``design_variables`` are required."""
     config = Config.from_dict(_case())
     assert config.black_box.model == "some.module:SomeClass"
     assert config.black_box.num_nodes == 11
     assert not config.is_optimization
-    assert config.aircraft[0].name == "ac|geom|wing|S_ref"
+    assert "ac|geom|wing|S_ref" in config.design_variables
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("section", ["black_box", "aircraft", "mission"])
+@pytest.mark.parametrize("section", ["black_box", "design_variables"])
 def test_a_missing_required_section_is_named(section):
     """The error says which section, not that a key lookup failed."""
     data = _case()
@@ -61,7 +80,7 @@ def test_a_missing_required_section_is_named(section):
 def test_an_unknown_top_level_key_is_refused():
     """A silently ignored key answers a different question than the one that was asked."""
     with pytest.raises(ConfigError, match="unknown key"):
-        Config.from_dict(_case(mision={}))
+        Config.from_dict(_case(desing_variables={}))
 
 
 @pytest.mark.unit
@@ -72,180 +91,211 @@ def test_an_unknown_key_inside_a_section_is_refused():
 
 
 @pytest.mark.unit
-def test_a_parameter_without_a_value_is_refused():
+def test_an_unknown_key_on_a_variable_is_refused():
+    """``optimise`` is a plausible misspelling that would silently leave a variable fixed."""
+    data = _case()
+    data["design_variables"]["ac|geom|wing|S_ref"]["optimise"] = {"lower": 1, "upper": 2}
+    with pytest.raises(ConfigError, match="unknown key"):
+        Config.from_dict(data)
+
+
+@pytest.mark.unit
+def test_a_variable_without_a_value_is_refused():
     """Units without a value is a half-written entry."""
     with pytest.raises(ConfigError, match="requires a 'value' key"):
-        Config.from_dict(_case(aircraft={"ac|geom|wing|AR": {"units": "m**2"}}))
+        Config.from_dict(_case(design_variables={"ac|geom|wing|AR": {"units": "m**2"}}))
 
 
 @pytest.mark.unit
-def test_a_non_numeric_parameter_value_is_refused():
+def test_a_non_numeric_value_is_refused():
     """Caught in the case file, where the offending key can be named."""
-    with pytest.raises(ConfigError, match="non-numeric"):
-        Config.from_dict(_case(aircraft={"ac|geom|wing|AR": {"value": "wide"}}))
+    with pytest.raises(ConfigError, match="must be a number"):
+        Config.from_dict(_case(design_variables={"ac|geom|wing|AR": {"value": "wide"}}))
+    with pytest.raises(ConfigError, match="non-numeric entry"):
+        Config.from_dict(_case(design_variables={"ac|geom|wing|AR": {"value": [1.0, "wide"]}}))
+
+
+@pytest.mark.unit
+def test_a_variable_declared_in_both_blocks_is_refused():
+    """A variable is set once, in one place, or the second write silently wins."""
+    data = _case()
+    data["initial_conditions"]["ac|geom|wing|S_ref"] = {"value": 130.0, "units": "m**2"}
+    with pytest.raises(ConfigError, match="appear in both"):
+        Config.from_dict(data)
 
 
 # =============================================================================================
-# Mission
+# Design variables and initial conditions
 # =============================================================================================
 
 
 @pytest.mark.unit
-def test_every_steady_flight_phase_must_be_scheduled():
-    """An unscheduled phase flies its component's placeholder values."""
-    data = _case()
-    del data["mission"]["schedule"]["loiter"]
-    with pytest.raises(ConfigError, match="missing a schedule for"):
-        Config.from_dict(data)
-
-
-@pytest.mark.unit
-def test_a_phase_needs_both_speed_and_vertical_speed():
-    """Setting one alone flies a profile that is half inherited from whatever came before."""
-    data = _case()
-    data["mission"]["schedule"]["cruise"] = {"Ueas": {"value": 250}}
-    with pytest.raises(ConfigError, match="both 'Ueas' and 'vs' are required"):
-        Config.from_dict(data)
-
-
-@pytest.mark.unit
-def test_a_phase_the_mission_does_not_fly_is_refused():
-    """A typo in a phase name would otherwise schedule nothing at all."""
-    data = _case()
-    data["mission"]["schedule"]["crusie"] = {
-        "Ueas": {"value": 250},
-        "vs": {"value": 0},
-    }
-    with pytest.raises(ConfigError, match="does not fly"):
-        Config.from_dict(data)
-
-
-@pytest.mark.unit
-def test_a_continuation_step_may_override_only_some_phases():
-    """Steps are partial by design; the design mission is what must be complete."""
-    data = _case()
-    data["mission"]["continuation"] = [
-        {
-            "description": "easier",
-            "parameters": {"mission_range": {"value": 500, "units": "nmi"}},
-            "schedule": {"descent": {"Ueas": {"value": 250}, "vs": {"value": -800}}},
-        }
-    ]
-    config = Config.from_dict(data)
-    profile = config.mission.profile()
-    assert len(profile.continuation) == 1
-    assert profile.continuation[0].description == "easier"
-    assert set(profile.continuation[0].schedules) == {"descent"}
-
-
-@pytest.mark.unit
-def test_mission_parameter_names_carry_the_mission_prefix():
-    """They are checked against the black box, which publishes them under the mission group."""
+def test_a_variable_is_fixed_until_it_carries_an_optimize_entry():
+    """The one thing that makes a design variable free, and it is local to the variable."""
     config = Config.from_dict(_case())
-    assert config.mission.parameter_names == ("mission.mission_range",)
+    assert not config.design_variables["ac|geom|wing|S_ref"].is_free
+    assert config.free_variables == {}
+
+    config = Config.from_dict(_optimizing())
+    spec = config.design_variables["ac|geom|wing|S_ref"]
+    assert spec.is_free
+    assert spec.optimize.lower == 90.0 and spec.optimize.upper == 180.0
+    assert list(config.free_variables) == ["ac|geom|wing|S_ref"]
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    ("given", "expected"),
-    [(250.0, [250.0] * 5), ([230, 270], [230.0, 240.0, 250.0, 260.0, 270.0])],
-)
-def test_a_schedule_is_resampled_onto_the_grid(given, expected):
-    """One constant, two endpoints to interpolate, or one value per node."""
-    schedule = PhaseSchedule(given, 0.0)
-    assert schedule.airspeed_at(5) == pytest.approx(np.asarray(expected))
-
-
-@pytest.mark.unit
-def test_a_schedule_of_the_wrong_length_is_refused():
-    """Broadcasting it would quietly fly a different mission."""
-    with pytest.raises(ValueError, match="has 3 values but the mission has 5 nodes"):
-        PhaseSchedule([1.0, 2.0, 3.0], 0.0).airspeed_at(5)
-
-
-@pytest.mark.unit
-def test_a_mission_profile_needs_every_phase():
-    """Enforced by the profile itself, not only by the case-file reader."""
-    with pytest.raises(ValueError, match="No airspeed/vertical-speed schedule"):
-        MissionConfig(parameters={}, schedules={"cruise": PhaseSchedule(250.0, 0.0)}).profile()
-
-
-# =============================================================================================
-# Optimization
-# =============================================================================================
-
-
-@pytest.mark.unit
-def test_an_optimization_section_parses():
-    """Design variables, objective and requirements are all data."""
-    data = _case(
-        optimization={
-            "driver": {"name": "SLSQP", "maxiter": 25, "tol": 1e-7, "derivative_mode": "fwd"},
-            "objective": {"name": "total_fuel", "units": "kg", "ref": 2e4},
-            "design_variables": [{"name": "ac|geom|wing|S_ref", "lower": 90, "upper": 180, "units": "m**2"}],
-            "requirements": [
-                {
-                    "type": "balanced_field_length",
-                    "limit": 8000,
-                    "units": "ft",
-                    "regulation": "14 CFR 25.113",
-                    "source": "8000 ft dry runway",
-                }
-            ],
-        }
-    )
+def test_an_initial_condition_may_also_be_freed():
+    """OpenConcept's B738_VLM_drag example optimizes ``cruise|h0``; so may a cdadt case."""
+    data = _optimizing()
+    data["initial_conditions"]["cruise|h0"] = {
+        "value": 35000,
+        "units": "ft",
+        "optimize": {"lower": 25000, "upper": 41000},
+    }
     config = Config.from_dict(data)
-    assert config.is_optimization
-    settings = config.optimization
-    assert settings.driver == "SLSQP"
-    assert settings.maxiter == 25
-    assert settings.design_variables[0].name == "ac|geom|wing|S_ref"
-    assert settings.requirements[0].regulation == "14 CFR 25.113"
+    assert set(config.free_variables) == {"ac|geom|wing|S_ref", "cruise|h0"}
 
 
 @pytest.mark.unit
-def test_an_optimization_needs_a_design_variable():
-    """Nothing to change is not an optimization."""
-    with pytest.raises(ConfigError, match="at least one design variable"):
-        Config.from_dict(
-            _case(
-                optimization={
-                    "objective": {"name": "total_fuel"},
-                    "design_variables": [],
-                }
-            )
-        )
+def test_a_design_variable_cannot_be_bounded_by_an_equality():
+    """``equals`` bounds a constraint; a design variable moves between two sides."""
+    data = _case()
+    data["design_variables"]["ac|geom|wing|S_ref"]["optimize"] = {"equals": 100.0}
+    with pytest.raises(ConfigError, match="unknown key"):
+        Config.from_dict(data)
 
 
 @pytest.mark.unit
-def test_a_design_variable_declared_twice_is_refused():
-    """The second declaration would silently replace the first."""
-    with pytest.raises(ConfigError, match="declared more than once"):
-        Config.from_dict(
-            _case(
-                optimization={
-                    "objective": {"name": "total_fuel"},
-                    "design_variables": [
-                        {"name": "ac|geom|wing|AR", "lower": 7, "upper": 13},
-                        {"name": "ac|geom|wing|AR", "lower": 8, "upper": 12},
-                    ],
-                }
-            )
-        )
+def test_an_empty_optimize_band_is_refused():
+    """An empty interval is a typo the optimizer's own message would not explain."""
+    with pytest.raises(ConfigError, match="band is empty"):
+        OptimizeSpec(Bounds(lower=13.0, upper=7.0))
 
 
 @pytest.mark.unit
-def test_inverted_design_variable_bounds_are_refused():
-    """An empty interval is a typo, and the optimizer's own message would not say so."""
-    with pytest.raises(ConfigError, match=r"lower .* >= upper"):
-        DesignVariableSpec("ac|geom|wing|AR", lower=13.0, upper=7.0)
-
-
-@pytest.mark.unit
-def test_a_design_variable_scales_itself_from_its_bounds_by_default():
+def test_a_free_variable_scales_itself_from_its_bounds_by_default():
     """Wing area in square metres and aspect ratio must be comparable to the optimizer."""
-    assert DesignVariableSpec("ac|geom|wing|S_ref", 90.0, 180.0).ref == 180.0
-    assert DesignVariableSpec("ac|geom|wing|S_ref", 90.0, 180.0, ref=100.0).ref == 100.0
+    assert OptimizeSpec(Bounds(lower=90.0, upper=180.0)).ref == 180.0
+    assert OptimizeSpec(Bounds(lower=90.0, upper=180.0), Scaling(ref=100.0)).ref == 100.0
+
+
+@pytest.mark.unit
+def test_a_variable_may_be_a_per_node_schedule():
+    """Two values are endpoints; that is how ``np.linspace`` is written as data."""
+    config = Config.from_dict(_case())
+    schedule = config.initial_conditions_specs["climb.fltcond|Ueas"]
+    assert np.asarray(schedule.value).tolist() == [230.0, 252.0]
+    assert schedule.units == "kn"
+
+
+@pytest.mark.unit
+def test_both_blocks_are_written_into_the_box():
+    """A value is a value whichever block declared it; the split is about what a reader sees."""
+    conditions = Config.from_dict(_case()).initial_conditions()
+    assert "ac|geom|wing|S_ref" in conditions
+    assert "mission_range" in conditions
+    assert len(conditions) == 3
+
+
+# =============================================================================================
+# Continuation
+# =============================================================================================
+
+
+@pytest.mark.unit
+def test_a_continuation_rung_states_only_what_it_relaxes():
+    """Everything it does not name stays at the design condition."""
+    data = _case(
+        continuation=[
+            {
+                "description": "easier",
+                "initial_conditions": {"mission_range": {"value": 500, "units": "nmi"}},
+            }
+        ]
+    )
+    ladder = Config.from_dict(data).continuation
+    assert len(ladder) == 1
+    assert ladder.steps[0].description == "easier"
+    assert set(ladder.steps[0].conditions) == {"mission_range"}
+
+
+@pytest.mark.unit
+def test_a_continuation_rung_rejects_unknown_keys():
+    """``schedule`` was the old spelling; silently ignoring it would fly the design mission."""
+    with pytest.raises(ConfigError, match="unknown key"):
+        Config.from_dict(_case(continuation=[{"description": "x", "schedule": {}}]))
+
+
+@pytest.mark.unit
+def test_continuation_must_be_a_list():
+    """A mapping there is a plausible mistake that would otherwise iterate over its keys."""
+    with pytest.raises(ConfigError, match="must be a list"):
+        Config.from_dict(_case(continuation={"description": "x"}))
+
+
+# =============================================================================================
+# Constraints and the objective
+# =============================================================================================
+
+
+@pytest.mark.unit
+def test_a_constraint_may_be_one_sided_two_sided_or_an_equality():
+    """Every form ``add_constraint`` accepts, because the examples use every one."""
+    data = _optimizing(
+        constraints=[
+            {"name": "takeoff_field_length", "upper": 8000, "units": "ft"},
+            {"name": "climb_throttle", "lower": 0.01, "upper": 1.05},
+            {"name": "mission_range_flown", "equals": 2800, "units": "nmi"},
+        ]
+    )
+    one, two, equality = Config.from_dict(data).constraints
+    assert one.bounds.upper == 8000 and one.bounds.lower is None
+    assert two.bounds.is_two_sided and two.bounds.describe() == "0.01 to 1.05"
+    assert equality.bounds.is_equality and equality.bounds.describe() == "= 2800"
+
+
+@pytest.mark.unit
+def test_a_constraint_with_no_bound_at_all_is_refused():
+    """A named quantity with no limit constrains nothing."""
+    with pytest.raises(ConfigError, match="needs a 'lower', an 'upper' or an 'equals'"):
+        Config.from_dict(_optimizing(constraints=[{"name": "takeoff_field_length", "units": "ft"}]))
+
+
+@pytest.mark.unit
+def test_an_equality_cannot_be_combined_with_an_inequality():
+    """OpenMDAO would take one and drop the other."""
+    with pytest.raises(ConfigError, match="either an equality or an inequality"):
+        Config.from_dict(_optimizing(constraints=[{"name": "MTOW", "equals": 1.0, "upper": 2.0}]))
+
+
+@pytest.mark.unit
+def test_provenance_is_optional_and_reported_as_such():
+    """A constraint that names a regulation and a source is traceable; one that does not is not."""
+    data = _optimizing(
+        constraints=[
+            {
+                "name": "takeoff_field_length",
+                "upper": 8000,
+                "regulation": "14 CFR 25.113",
+                "source": "8000 ft dry runway",
+            },
+            {"name": "climb_throttle", "lower": 0.01, "upper": 1.05},
+        ]
+    )
+    traceable, plain = Config.from_dict(data).constraints
+    assert traceable.is_traceable
+    assert not plain.is_traceable
+    assert plain.regulation == "" and plain.source == ""
+    # A title defaults to the name, so a report always has something to print.
+    assert plain.title == "climb_throttle"
+
+
+@pytest.mark.unit
+def test_an_objective_with_nothing_to_move_is_refused():
+    """An objective and no free variable is a study that cannot do anything."""
+    data = _case(**copy.deepcopy(OPTIMIZATION))
+    with pytest.raises(ConfigError, match="nothing for the driver to move"):
+        Config.from_dict(data)
 
 
 @pytest.mark.unit
@@ -256,133 +306,31 @@ def test_an_unknown_objective_sense_is_refused():
 
 
 @pytest.mark.unit
-def test_maximizing_negates_the_objective_reference():
-    """OpenMDAO drivers always minimize; the sign lives in one place."""
-    assert ObjectiveSpec("range", sense="minimize").scaler == 1.0
-    assert ObjectiveSpec("range", sense="maximize").scaler == -1.0
+def test_maximizing_negates_the_objective_scaling():
+    """OpenMDAO drivers only minimize; the sign lives in one place."""
+    assert ObjectiveSpec("range", sense="minimize").as_kwargs(None)["ref"] == 1.0
+    assert ObjectiveSpec("range", sense="maximize").as_kwargs(None)["ref"] == -1.0
+    maximized = ObjectiveSpec("range", scaling=Scaling(scaler=2.0), sense="maximize").as_kwargs(None)
+    assert maximized["scaler"] == -2.0
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("missing", ["regulation", "source"])
-def test_a_requirement_must_name_its_regulation_and_its_source(missing):
-    """A constraint nobody can defend has no place in a certification-driven study."""
-    entry = {
-        "type": "balanced_field_length",
-        "limit": 8000,
-        "regulation": "14 CFR 25.113",
-        "source": "8000 ft dry runway",
-    }
-    del entry[missing]
-    with pytest.raises(ConfigError, match=f"requires a '{missing}' key"):
-        RequirementSpec.from_dict(entry, "optimization.requirements[0]")
+def test_ref_and_scaler_cannot_both_be_given():
+    """They are two spellings of the same affine map, and OpenMDAO refuses the pair."""
+    with pytest.raises(ConfigError, match="not both"):
+        Scaling(ref=1.0, scaler=2.0)
 
 
 @pytest.mark.unit
 def test_an_unknown_derivative_mode_is_refused():
     """OpenMDAO would accept it and mean something else."""
     with pytest.raises(ConfigError, match="derivative_mode"):
-        Config.from_dict(
-            _case(
-                optimization={
-                    "driver": {"derivative_mode": "forward"},
-                    "objective": {"name": "total_fuel"},
-                    "design_variables": [{"name": "ac|geom|wing|AR", "lower": 7, "upper": 13}],
-                }
-            )
-        )
+        Config.from_dict(_optimizing(driver={"derivative_mode": "forward"}))
 
 
 # =============================================================================================
-# The shipped cases
+# Files
 # =============================================================================================
-
-
-@pytest.mark.unit
-def test_the_shipped_sizing_case_parses(sizing_config):
-    """The case a user is most likely to copy must be valid."""
-    assert sizing_config.black_box.num_nodes == 21
-    assert len(sizing_config.aircraft) == 34
-    assert len(sizing_config.mission.profile().continuation) == 2
-    assert not sizing_config.is_optimization
-
-
-@pytest.mark.unit
-def test_the_shipped_optimization_case_parses(optimization_config):
-    """Including its certification basis."""
-    settings = optimization_config.optimization
-    assert settings is not None
-    assert len(settings.design_variables) == 5
-    assert len(settings.requirements) == 4
-    assert {requirement.kind for requirement in settings.requirements} == {
-        "balanced_field_length",
-        "engine_out_climb_gradient",
-        "throttle_limit",
-    }
-
-
-@pytest.mark.unit
-def test_every_aircraft_parameter_in_the_shipped_cases_records_a_source(sizing_config, optimization_config):
-    """A number with no provenance is indistinguishable from a guess in the report quoting it."""
-    for config in (sizing_config, optimization_config):
-        unsourced = [parameter.name for parameter in config.aircraft if not parameter.source]
-        assert not unsourced, f"{config.path} has unsourced parameters: {unsourced}"
-
-
-@pytest.mark.unit
-def test_the_two_shipped_cases_describe_the_same_aeroplane(sizing_config, optimization_config):
-    """The optimization case adds a question; it must not quietly change the aircraft."""
-    sizing = {parameter.name: (parameter.value, parameter.units) for parameter in sizing_config.aircraft}
-    optimizing = {parameter.name: (parameter.value, parameter.units) for parameter in optimization_config.aircraft}
-    assert sizing == optimizing
-
-
-@pytest.mark.unit
-def test_the_shipped_cases_are_valid_yaml_documents():
-    """Parsed independently of cdadt, so a YAML error is reported as one."""
-    from tests.conftest import CASES
-
-    for path in sorted(CASES.glob("*.yaml")):
-        with open(path, encoding="utf-8") as handle:
-            assert isinstance(yaml.safe_load(handle), dict), path
-
-
-# =============================================================================================
-# Error branches and representations
-# =============================================================================================
-
-
-@pytest.mark.unit
-def test_a_section_that_is_not_a_mapping_says_so():
-    """A YAML list where a mapping was expected fails by name rather than by AttributeError."""
-    with pytest.raises(ConfigError, match="must be a mapping"):
-        Config.from_dict(_case(black_box=["model", "num_nodes"]))
-
-
-@pytest.mark.unit
-def test_design_variables_and_requirements_must_be_lists():
-    """A mapping there is a plausible mistake that would otherwise iterate over its keys."""
-    base = {"objective": {"name": "total_fuel"}}
-    with pytest.raises(ConfigError, match="design_variables' must be a list"):
-        Config.from_dict(_case(optimization={**base, "design_variables": {"name": "ac|geom|wing|AR"}}))
-    with pytest.raises(ConfigError, match="requirements' must be a list"):
-        Config.from_dict(
-            _case(
-                optimization={
-                    **base,
-                    "design_variables": [{"name": "ac|geom|wing|AR", "lower": 7, "upper": 13}],
-                    "requirements": {"type": "balanced_field_length"},
-                }
-            )
-        )
-
-
-@pytest.mark.unit
-def test_a_non_numeric_mission_parameter_is_refused():
-    """Mission values go through the same quantity reader as aircraft parameters."""
-    data = _case()
-    data["mission"]["parameters"] = {"mission_range": {"value": "far", "units": "nmi"}}
-    with pytest.raises(ConfigError, match="must be a number"):
-        Config.from_dict(data)
 
 
 @pytest.mark.unit
@@ -398,49 +346,103 @@ def test_a_file_that_is_not_valid_yaml_is_reported_as_such(tmp_path):
 def test_a_file_whose_top_level_is_not_a_mapping_is_refused(tmp_path):
     """A list of cases is a plausible thing to write, and is not what this reader takes."""
     listy = tmp_path / "listy.yaml"
-    listy.write_text("- black_box\n- mission\n", encoding="utf-8")
+    listy.write_text("- black_box\n- design_variables\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="must contain a mapping at the top level"):
         Config.from_yaml(listy)
 
 
 @pytest.mark.unit
-def test_the_mission_section_exposes_its_path():
-    """The mission subsystem name is configurable, and is what parameter names are prefixed with."""
-    data = _case()
-    data["mission"]["mission_path"] = "trajectory"
-    config = Config.from_dict(data)
-    assert config.mission.mission_path == "trajectory"
-    assert config.mission.parameter_names == ("trajectory.mission_range",)
+def test_a_section_that_is_not_a_mapping_says_so():
+    """A YAML list where a mapping was expected fails by name rather than by AttributeError."""
+    with pytest.raises(ConfigError, match="must be a mapping"):
+        Config.from_dict(_case(black_box=["model", "num_nodes"]))
 
 
 @pytest.mark.unit
 def test_every_configuration_object_reprs_as_what_it_holds(tmp_path):
     """Reprs are what a debugger frame shows while a case is being diagnosed."""
-    data = _case(
-        solver={"maxiter": 25},
-        optimization={
-            "objective": {"name": "total_fuel", "sense": "minimize"},
-            "design_variables": [{"name": "ac|geom|wing|AR", "lower": 7, "upper": 13}],
-            "requirements": [
-                {
-                    "type": "balanced_field_length",
-                    "limit": 8000,
-                    "regulation": "14 CFR 25.113",
-                    "source": "an 8000 ft runway",
-                }
-            ],
-        },
-    )
-    config = Config.from_dict(data)
+    config = Config.from_dict(_optimizing())
     assert repr(config.black_box) == "BlackBoxConfig('some.module:SomeClass', num_nodes=11)"
-    assert repr(config.solver) == "SolverConfig(maxiter=25)"
-    assert repr(config.mission).startswith("MissionConfig(7 phases")
-    assert repr(config.optimization).startswith("OptimizationConfig(objective='total_fuel'")
-    assert repr(config.optimization.objective) == "ObjectiveSpec('total_fuel', sense='minimize')"
-    assert repr(config.optimization.design_variables[0]).startswith("DesignVariableSpec('ac|geom|wing|AR'")
-    assert repr(config.optimization.requirements[0]).startswith("RequirementSpec('balanced_field_length'")
-    assert repr(config) == "Config(in memory, optimization, 1 parameters)"
+    assert repr(config.solver) == "SolverConfig(maxiter=20)"
+    assert repr(config.driver) == "DriverConfig('SLSQP', maxiter=25)"
+    assert repr(config.objective) == "ObjectiveSpec('total_fuel', sense='minimize')"
+    assert repr(config.constraints[0]).startswith("ConstraintSpec('takeoff_field_length'")
+    assert repr(config.design_variables["ac|geom|wing|S_ref"]).endswith("free)")
+    assert repr(config.free_variables["ac|geom|wing|S_ref"].optimize) == "OptimizeSpec(90 to 180)"
+    assert repr(Scaling(ref=2.0)) == "Scaling({'ref': 2.0})"
+    assert repr(Bounds(upper=1.0)) == "Bounds(<= 1)"
+    assert repr(config) == "Config(in memory, optimization, 1 design variables)"
 
     path = tmp_path / "case.yaml"
     path.write_text(yaml.safe_dump(MINIMAL), encoding="utf-8")
-    assert repr(Config.from_yaml(path)) == f"Config({path}, sizing, 1 parameters)"
+    assert repr(Config.from_yaml(path)) == f"Config({path}, sizing, 1 design variables)"
+
+
+@pytest.mark.unit
+def test_a_variable_spec_becomes_a_routable_parameter():
+    """Scalars route to a discipline; a per-node schedule goes straight into the box."""
+    spec = VariableSpec("ac|geom|wing|S_ref", 124.6, "m**2", "specs")
+    parameter = spec.parameter()
+    assert (parameter.name, parameter.value, parameter.units, parameter.source) == (
+        "ac|geom|wing|S_ref",
+        124.6,
+        "m**2",
+        "specs",
+    )
+    assert [p.name for p in Config.from_dict(_case()).parameters()] == ["ac|geom|wing|S_ref"]
+
+
+# =============================================================================================
+# The shipped cases
+# =============================================================================================
+
+
+@pytest.mark.unit
+def test_the_shipped_sizing_case_parses(sizing_config):
+    """The case a user is most likely to copy must be valid."""
+    assert sizing_config.black_box.num_nodes == 21
+    assert len(sizing_config.design_variables) == 34
+    assert not sizing_config.free_variables
+    assert len(sizing_config.continuation) == 2
+    assert not sizing_config.is_optimization
+
+
+@pytest.mark.unit
+def test_the_shipped_optimization_case_parses(optimization_config):
+    """Same aeroplane, five variables freed, four constraints, one objective."""
+    assert len(optimization_config.design_variables) == 34
+    assert len(optimization_config.free_variables) == 5
+    assert len(optimization_config.constraints) == 4
+    assert optimization_config.objective.name == "total_fuel"
+    assert optimization_config.driver.name == "IPOPT"
+
+
+@pytest.mark.unit
+def test_every_design_variable_in_the_shipped_cases_records_a_source(sizing_config, optimization_config):
+    """A number with no provenance is indistinguishable from a guess in the report quoting it."""
+    for config in (sizing_config, optimization_config):
+        unsourced = [name for name, spec in config.design_variables.items() if not spec.source]
+        assert not unsourced, f"{config.path} has unsourced design variables: {unsourced}"
+
+
+@pytest.mark.unit
+def test_the_two_shipped_cases_describe_the_same_aeroplane(sizing_config, optimization_config):
+    """The optimization case adds a question; it must not quietly change the aircraft."""
+    sizing = {
+        name: (np.asarray(spec.value).tolist(), spec.units) for name, spec in sizing_config.design_variables.items()
+    }
+    optimizing = {
+        name: (np.asarray(spec.value).tolist(), spec.units)
+        for name, spec in optimization_config.design_variables.items()
+    }
+    assert sizing == optimizing
+
+
+@pytest.mark.unit
+def test_the_shipped_cases_are_valid_yaml_documents():
+    """Parsed independently of cdadt, so a YAML error is reported as one."""
+    from tests.conftest import CASES
+
+    for path in sorted(CASES.glob("*.yaml")):
+        with open(path, encoding="utf-8") as handle:
+            assert isinstance(yaml.safe_load(handle), dict), path

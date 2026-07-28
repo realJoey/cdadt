@@ -23,7 +23,7 @@ from openmdao.core.analysis_error import AnalysisError
 from cdadt import Config, SizingAnalysis
 
 #: Tolerances to probe for the achievable residual floor.
-PROBED_TOLERANCES: tuple[float, ...] = (1e-7, 1e-8, 1e-9, 1e-10)
+PROBED_TOLERANCES: tuple[float, ...] = (1e-7, 1e-8, 1e-9, 1e-10, 1e-12)
 
 #: The tolerance the shipped cases request.
 SHIPPED_TOLERANCE = 1e-9
@@ -72,19 +72,20 @@ def test_a_failed_solve_can_be_allowed_through_only_by_asking_for_it(sizing_case
 @pytest.mark.verification
 @pytest.mark.slow
 def test_the_achievable_residual_floor_is_measured_not_assumed(sizing_case):
-    """Find the tightest tolerance the box can reach, and confirm the shipped case sits on it.
+    """Find how tightly the box can be converged, and confirm the shipped case has margin.
 
-    The result is recorded in :doc:`/verification`: about 1e-9, independent of grid. The shipped
-    cases request exactly that, which is why they converge and why asking for 1e-10 does not.
+    Re-measured after the case-file rewrite, and the answer changed: every tolerance down to
+    1e-12 is now reachable, where an earlier layout stalled at about 9e-9 on some grids. The
+    difference is that the ground-roll speed seeds are now ordinary initial conditions, applied
+    before every continuation rung and before the design run, rather than written once at the
+    start. The shipped 1e-9 therefore has three decades of margin rather than sitting on a
+    floor, which is why :mod:`tests.test_verification_grid` can refine the grid at the shipped
+    tolerance instead of one decade looser.
     """
     reached = {tol: _converges(sizing_case(), 11, tol) for tol in PROBED_TOLERANCES}
 
-    # Loose tolerances must all be reachable, or something other than the floor is wrong.
-    assert reached[1e-7] and reached[1e-8], f"the box cannot reach a loose tolerance: {reached}"
-    # The shipped tolerance must be reachable, or the shipped cases are lucky rather than sound.
+    assert all(reached.values()), f"a tolerance that should be reachable is not: {reached}"
     assert reached[SHIPPED_TOLERANCE], "the shipped tolerance of 1e-9 is not reachable"
-    # And there must be a floor below it, or the documented explanation of the grid study is wrong.
-    assert not reached[1e-10], "the floor is tighter than 1e-10; the documented explanation is stale"
 
 
 @pytest.mark.verification

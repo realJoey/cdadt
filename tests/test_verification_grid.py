@@ -34,9 +34,11 @@ GRIDS: tuple[int, ...] = (11, 21, 31, 41, 61, 81)
 ORDER_TRIPLE: tuple[int, int, int] = (21, 41, 81)
 REFINEMENT_RATIO = 2.0
 
-#: A tolerance every grid can actually reach; see :mod:`tests.test_verification_solver` for the
-#: measurement that fixes it. Uniform across grids so that only discretization varies.
-SOLVER_TOLERANCE = 1e-8
+#: The tolerance the shipped cases request. Every grid reaches it -- see
+#: :mod:`tests.test_verification_solver` for the measurement -- so the study can refine the grid
+#: at the tolerance the results are actually produced at. Uniform across grids so that only
+#: discretization varies.
+SOLVER_TOLERANCE = 1e-9
 
 #: Quantities the study tracks. These are the ones quoted in the documentation.
 TRACKED = ("MTOW", "OEW", "block_fuel", "total_fuel", "takeoff_field_length", "V1")
@@ -64,10 +66,9 @@ def refinement(sizing_case) -> dict[int, dict[str, float]]:
 def test_every_grid_converges(refinement):
     """Refinement must not itself be a source of failure.
 
-    Recorded because it was not free: at the shipped tolerance of 1e-9 the 31- and 41-node
-    grids stall at a residual of about 9e-9 and are reported as non-converged. The floor is a
-    property of the box, not of the grid -- see :mod:`tests.test_verification_solver` -- and the
-    study runs at 1e-8 for that reason.
+    Worth asserting rather than assuming: an earlier case-file layout stalled at 31 and 41 nodes
+    at this very tolerance, because the ground-roll speed seeds were written once instead of
+    before every continuation rung. Every grid now converges at the shipped tolerance.
     """
     assert set(refinement) == set(GRIDS)
     for num_nodes, results in refinement.items():

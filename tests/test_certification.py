@@ -1,31 +1,21 @@
-"""Unit and integration: requirements, their provenance, and the traceability matrix."""
+"""Unit and integration: constraints, their provenance, and the traceability matrix."""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from cdadt import (
-    BalancedFieldLength,
-    CertificationBasis,
-    EngineOutClimbGradient,
-    Requirement,
-    RequirementCatalog,
-    RequirementError,
-    RequirementSpec,
-    ResponseCatalog,
-    ResponseLimit,
-    ThrottleLimit,
-)
+from cdadt import CertificationBasis, Constraint, ConstraintError, ConstraintSpec, ResponseCatalog, Scaling
+from cdadt.config import Bounds
 
 CATALOG = ResponseCatalog()
 
 
 class FakeBox:
-    """The smallest thing a requirement can be evaluated against.
+    """The smallest thing a constraint can be evaluated against.
 
-    Requirements only ever ask a box for a value at a path, so a dictionary is enough. Using one
-    keeps these tests about the requirement logic rather than about OpenConcept.
+    Constraints only ever ask a box for a value at a path, so a dictionary is enough. Using one
+    keeps these tests about the constraint logic rather than about OpenConcept.
     """
 
     def __init__(self, values: dict[str, float | np.ndarray]) -> None:
@@ -40,95 +30,61 @@ class FakeBox:
         return path in self._values
 
 
-def _field_length(limit: float = 8000.0) -> BalancedFieldLength:
-    """Return a balanced field length requirement with a stated source."""
-    return BalancedFieldLength(
-        limit=limit, regulation="14 CFR 25.113", source="8000 ft dry runway at sea level, ISA", units="ft"
-    )
+def _constraint(**overrides) -> Constraint:
+    """Return a field-length constraint with stated provenance."""
+    settings = {
+        "name": "takeoff_field_length",
+        "bounds": Bounds(upper=8000.0),
+        "units": "ft",
+        "regulation": "14 CFR 25.113",
+        "source": "8000 ft dry runway at sea level, ISA",
+    }
+    settings.update(overrides)
+    return Constraint(ConstraintSpec(**settings), CATALOG)
 
 
 # =============================================================================================
-# Provenance
-# =============================================================================================
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize("missing", ["regulation", "source"])
-def test_a_requirement_must_name_its_regulation_and_source(missing):
-    """Both are required at construction, not only in the case file."""
-    arguments = {"limit": 8000.0, "regulation": "14 CFR 25.113", "source": "a runway"}
-    arguments[missing] = ""
-    with pytest.raises(RequirementError, match="must"):
-        BalancedFieldLength(**arguments)
-
-
-@pytest.mark.unit
-def test_a_requirement_refuses_options_it_does_not_understand():
-    """A misspelled option would otherwise be silently dropped."""
-    with pytest.raises(RequirementError, match="does not understand"):
-        BalancedFieldLength(limit=8000.0, regulation="r", source="s", options={"phase": "climb"})
-
-
-@pytest.mark.unit
-def test_a_throttle_limit_must_say_which_phase():
-    """Without it there is no response to read."""
-    with pytest.raises(RequirementError, match="which 'phase'"):
-        ThrottleLimit(limit=1.0, regulation="design", source="engine deck")
-
-
-@pytest.mark.unit
-def test_a_response_limit_must_say_what_it_limits():
-    """The generic escape hatch still has to be specific."""
-    with pytest.raises(RequirementError, match="which 'response'"):
-        ResponseLimit(limit=1.0, regulation="design", source="a reason")
-
-
-# =============================================================================================
-# Construction from a case file
+# Naming and provenance
 # =============================================================================================
 
 
 @pytest.mark.unit
-def test_every_shipped_requirement_is_available_under_its_type():
-    """The case file names a requirement by ``type``; the catalogue is how that resolves."""
-    catalog = RequirementCatalog()
-    for kind in ("balanced_field_length", "engine_out_climb_gradient", "throttle_limit", "response_limit"):
-        assert kind in catalog
+def test_a_constraint_resolves_a_response_name_to_a_path_and_units():
+    """Response names are preferred over raw paths because they carry their own units."""
+    constraint = _constraint(units=None)
+    assert constraint.path == "mission.bfl.distance_continue"
+    assert constraint.units == "ft"
+    assert constraint.name == "takeoff_field_length"
 
 
 @pytest.mark.unit
-def test_an_unknown_requirement_type_lists_the_ones_that_exist():
-    """A typo in a case file should not require reading the source to fix."""
-    spec = RequirementSpec("balanced_feild_length", 8000.0, "r", "s")
-    with pytest.raises(RequirementError, match="Available:"):
-        Requirement.from_spec(spec)
+def test_a_raw_path_is_passed_through_unchanged():
+    """Anything the catalogue does not know is the box's name, and the box gives the error."""
+    constraint = Constraint(ConstraintSpec("mission.cruise.fltcond|M", Bounds(upper=0.82)), CATALOG)
+    assert constraint.path == "mission.cruise.fltcond|M"
+    assert constraint.units is None
 
 
 @pytest.mark.unit
-def test_a_requirement_built_from_a_spec_keeps_its_provenance():
-    """The regulation and source travel from the case file to the report unchanged."""
-    spec = RequirementSpec("balanced_field_length", 8000.0, "14 CFR 25.113", "an 8000 ft runway", units="ft")
-    requirement = Requirement.from_spec(spec)
-    assert isinstance(requirement, BalancedFieldLength)
-    assert requirement.regulation == "14 CFR 25.113"
-    assert requirement.source == "an 8000 ft runway"
+def test_units_stated_in_the_case_file_win_over_the_response_default():
+    """A case file may state a limit in whatever unit the regulation is written in."""
+    assert _constraint(units="m").units == "m"
 
 
 @pytest.mark.unit
-def test_throttle_limits_in_different_phases_get_different_names():
-    """Two requirements with one name would silently replace one another as constraints."""
-    climb = ThrottleLimit(1.0, "design", "deck", options={"phase": "climb"})
-    cruise = ThrottleLimit(1.0, "design", "deck", options={"phase": "cruise"})
-    assert climb.name != cruise.name
-    assert climb.response_name() == "climb_throttle"
-    assert climb.title != cruise.title
+def test_provenance_is_optional_and_a_constraint_knows_whether_it_has_any():
+    """Naming both a regulation and a source is what makes a row certification evidence."""
+    assert _constraint().is_traceable
+    assert not _constraint(regulation="", source="").is_traceable
+    assert not _constraint(source="").is_traceable, "a regulation with no source is not traceable"
+    assert not _constraint(regulation="").is_traceable
 
 
 @pytest.mark.unit
-def test_a_basis_refuses_two_requirements_with_the_same_name():
-    """OpenMDAO would keep only one of the two constraints."""
-    with pytest.raises(RequirementError, match="named"):
-        CertificationBasis([_field_length(), _field_length(7000.0)])
+def test_a_title_defaults_to_the_name_so_a_report_always_has_one():
+    """And a stated title replaces it."""
+    assert _constraint().title == "takeoff_field_length"
+    assert _constraint(title="Balanced field length").title == "Balanced field length"
 
 
 # =============================================================================================
@@ -138,171 +94,180 @@ def test_a_basis_refuses_two_requirements_with_the_same_name():
 
 @pytest.mark.unit
 def test_an_upper_limit_is_met_below_it_and_violated_above_it():
-    """Margin is positive on the satisfying side, whichever way the inequality runs."""
-    requirement = _field_length()
-    box = FakeBox({requirement.path(CATALOG): 6000.0})
-    result = requirement.evaluate(box, CATALOG)
-    assert result.satisfied and result.margin == pytest.approx(2000.0) and result.status == "MET"
+    """Margin is positive on the satisfying side, whichever way the bound runs."""
+    constraint = _constraint()
+    met = constraint.evaluate(FakeBox({constraint.path: 6000.0}))
+    assert met.satisfied and met.margin == pytest.approx(2000.0) and met.status == "MET"
 
-    result = requirement.evaluate(FakeBox({requirement.path(CATALOG): 9000.0}), CATALOG)
-    assert not result.satisfied and result.margin == pytest.approx(-1000.0) and result.status == "VIOLATED"
+    violated = constraint.evaluate(FakeBox({constraint.path: 9000.0}))
+    assert not violated.satisfied and violated.margin == pytest.approx(-1000.0)
+    assert violated.status == "VIOLATED"
 
 
 @pytest.mark.unit
 def test_a_lower_limit_runs_the_other_way():
     """The engine-out gradient must not fall below the minimum."""
-    requirement = EngineOutClimbGradient(0.024, "14 CFR 25.121(b)", "two-engine aeroplane", units="rad")
-    met = requirement.evaluate(FakeBox({requirement.path(CATALOG): 0.05}), CATALOG)
-    violated = requirement.evaluate(FakeBox({requirement.path(CATALOG): 0.01}), CATALOG)
+    constraint = Constraint(ConstraintSpec("engine_out_climb_gradient", Bounds(lower=0.024), units="rad"), CATALOG)
+    met = constraint.evaluate(FakeBox({constraint.path: 0.05}))
+    violated = constraint.evaluate(FakeBox({constraint.path: 0.01}))
     assert met.satisfied and met.margin == pytest.approx(0.026)
     assert not violated.satisfied and violated.margin == pytest.approx(-0.014)
 
 
 @pytest.mark.unit
-def test_a_requirement_sitting_on_its_limit_is_reported_as_active():
-    """An active requirement is one that shaped the design, and that is worth distinguishing."""
-    requirement = _field_length()
-    result = requirement.evaluate(FakeBox({requirement.path(CATALOG): 8000.0}), CATALOG)
-    assert result.satisfied and result.active and result.status == "ACTIVE"
+def test_a_two_sided_band_is_only_as_compliant_as_its_nearest_side():
+    """Written exactly as ``add_constraint("climb.throttle", lower=0.01, upper=1.05)``."""
+    constraint = Constraint(ConstraintSpec("climb_throttle", Bounds(lower=0.01, upper=1.05)), CATALOG)
+
+    # Node 0 has margin min(1.05-0.5, 0.5-0.01) = 0.49; node 1 has min(0.45, 0.59) = 0.45.
+    # The governing node is the tighter one, so the band reports 0.45 at a value of 0.6.
+    middle = constraint.evaluate(FakeBox({constraint.path: np.array([0.5, 0.6])}))
+    assert middle.satisfied and middle.margin == pytest.approx(0.45)
+    assert middle.value == pytest.approx(0.6)
+
+    near_top = constraint.evaluate(FakeBox({constraint.path: np.array([0.5, 1.04])}))
+    assert near_top.satisfied and near_top.margin == pytest.approx(0.01)
+
+    below = constraint.evaluate(FakeBox({constraint.path: np.array([0.5, 0.005])}))
+    assert not below.satisfied
+
+
+@pytest.mark.unit
+def test_an_equality_is_satisfied_only_at_the_value():
+    """Its margin is zero when met and negative by the distance otherwise."""
+    constraint = Constraint(ConstraintSpec("mission_range_flown", Bounds(equals=2800.0), units="nmi"), CATALOG)
+    exact = constraint.evaluate(FakeBox({constraint.path: 2800.0}))
+    off = constraint.evaluate(FakeBox({constraint.path: 2750.0}))
+    assert exact.satisfied and exact.margin == pytest.approx(0.0)
+    assert not off.satisfied and off.margin == pytest.approx(-50.0)
 
 
 @pytest.mark.unit
 def test_a_vector_response_is_reduced_to_the_node_that_governs():
-    """A throttle history is one requirement, not twenty-one, and one node decides it."""
-    requirement = ThrottleLimit(1.0, "design", "deck", options={"phase": "climb"})
-    box = FakeBox({requirement.path(CATALOG): np.array([0.5, 0.9, 1.2, 0.7])})
-    result = requirement.evaluate(box, CATALOG)
+    """A throttle history is one constraint, not one per node, and one node decides it."""
+    constraint = Constraint(ConstraintSpec("climb_throttle", Bounds(upper=1.0)), CATALOG)
+    result = constraint.evaluate(FakeBox({constraint.path: np.array([0.5, 0.9, 1.2, 0.7])}))
     assert result.value == pytest.approx(1.2)
     assert not result.satisfied
+
+
+@pytest.mark.unit
+def test_indices_narrow_a_vector_constraint_to_the_nodes_that_matter():
+    """``add_constraint(..., indices=[0], upper=1.0)`` appears in OpenConcept's own examples."""
+    constraint = Constraint(ConstraintSpec("climb_throttle", Bounds(upper=1.0), indices=[0]), CATALOG)
+    result = constraint.evaluate(FakeBox({constraint.path: np.array([0.5, 1.2])}))
+    assert result.value == pytest.approx(0.5)
+    assert result.satisfied, "the offending node was excluded on purpose"
+
+
+@pytest.mark.unit
+def test_a_constraint_sitting_on_its_bound_is_reported_as_active():
+    """An active constraint is one that shaped the design, and that is worth distinguishing."""
+    constraint = _constraint()
+    result = constraint.evaluate(FakeBox({constraint.path: 8000.0}))
+    assert result.satisfied and result.active and result.status == "ACTIVE"
+
+
+@pytest.mark.unit
+def test_constraints_and_results_repr_as_what_they_assert():
+    """Both end up in debugger frames while a certification argument is being checked."""
+    constraint = _constraint()
+    assert repr(constraint) == "Constraint('takeoff_field_length', <= 8000)"
+    result = constraint.evaluate(FakeBox({constraint.path: 6000.0}))
+    assert repr(result) == "ConstraintResult('takeoff_field_length', 6000.0000, MET)"
+
+
+# =============================================================================================
+# The basis
+# =============================================================================================
+
+
+@pytest.mark.unit
+def test_a_basis_refuses_two_constraints_with_the_same_name():
+    """OpenMDAO would keep only one of the two."""
+    with pytest.raises(ConstraintError, match="named"):
+        CertificationBasis([_constraint(), _constraint(bounds=Bounds(upper=7000.0))])
 
 
 @pytest.mark.unit
 def test_an_empty_basis_says_so_rather_than_printing_an_empty_table():
     """An unconstrained study is a valid study; the report must not imply otherwise."""
     basis = CertificationBasis([])
-    assert "No certification basis" in basis.traceability_matrix(FakeBox({}), CATALOG)
+    assert len(basis) == 0
+    assert "No constraints were declared" in basis.traceability_matrix(FakeBox({}))
+
+
+@pytest.mark.unit
+def test_a_basis_separates_the_traceable_constraints_from_the_rest():
+    """The distinction the whole module exists to make."""
+    plain = Constraint(ConstraintSpec("climb_throttle", Bounds(lower=0.01, upper=1.05)), CATALOG)
+    basis = CertificationBasis([_constraint(), plain])
+    assert len(basis) == 2
+    assert [c.name for c in basis.traceable] == ["takeoff_field_length"]
+    assert [c.name for c in basis] == ["takeoff_field_length", "climb_throttle"]
+    assert repr(basis) == "CertificationBasis(2 constraints)"
+
+
+@pytest.mark.unit
+def test_the_matrix_reports_provenance_where_there_is_some_and_says_so_where_there_is_not():
+    """A report that implied every row was certification evidence would be wrong."""
+    plain = Constraint(ConstraintSpec("climb_throttle", Bounds(lower=0.01, upper=1.05)), CATALOG)
+    basis = CertificationBasis([_constraint(), plain])
+    box = FakeBox({"mission.bfl.distance_continue": 6000.0, "mission.climb.throttle": np.array([0.5])})
+
+    matrix = basis.traceability_matrix(box)
+    assert "14 CFR 25.113" in matrix
+    assert "8000 ft dry runway at sea level, ISA" in matrix
+    assert "Design constraints with no stated regulation or source: climb_throttle" in matrix
+    assert "2 of 2 constraints met" in matrix
+
+
+@pytest.mark.unit
+def test_a_basis_of_only_plain_constraints_prints_no_provenance_section():
+    """There is nothing to trace, and an empty heading would suggest there should be."""
+    plain = Constraint(ConstraintSpec("climb_throttle", Bounds(upper=1.05)), CATALOG)
+    matrix = CertificationBasis([plain]).traceability_matrix(FakeBox({"mission.climb.throttle": np.array([0.5])}))
+    assert "Where each limit came from" not in matrix
+    assert "no stated regulation or source" in matrix
+
+
+@pytest.mark.unit
+def test_a_basis_of_only_traceable_constraints_prints_no_design_note():
+    """Symmetrically: nothing untraceable, so no note about untraceable things."""
+    matrix = CertificationBasis([_constraint()]).traceability_matrix(FakeBox({"mission.bfl.distance_continue": 6000.0}))
+    assert "Where each limit came from" in matrix
+    assert "no stated regulation or source" not in matrix
+
+
+@pytest.mark.unit
+def test_a_constraint_scales_itself_by_its_bound_unless_told_otherwise():
+    """A gradient in hundredths of a radian is invisible beside a field length in thousands."""
+    assert _constraint().spec.bounds.magnitude == 8000.0
+    assert _constraint(scaling=Scaling(ref=1.0)).spec.scaling.ref == 1.0
 
 
 # =============================================================================================
-# The traceability matrix
+# Against a real run
 # =============================================================================================
 
 
 @pytest.mark.integration
 def test_the_traceability_matrix_names_every_regulation_and_source(built_box, optimization_config):
     """The artefact the module exists to produce, evaluated on a real converged design."""
-    basis = CertificationBasis.from_specs(optimization_config.optimization.requirements)
-    matrix = basis.traceability_matrix(built_box, CATALOG)
+    basis = CertificationBasis.from_specs(optimization_config.constraints, CATALOG)
+    matrix = basis.traceability_matrix(built_box)
 
-    for requirement in basis:
-        assert requirement.regulation in matrix
-        assert requirement.source in matrix
-        assert requirement.title in matrix
-    assert "requirements met" in matrix
+    for constraint in basis.traceable:
+        assert constraint.regulation in matrix
+        assert constraint.source in matrix
+    for constraint in basis:
+        assert constraint.title in matrix
+    assert "constraints met" in matrix
 
 
 @pytest.mark.integration
 def test_the_shipped_basis_is_satisfied_by_the_baseline_aircraft(built_box, optimization_config):
     """The baseline must be feasible, or the optimization starts outside its own basis."""
-    basis = CertificationBasis.from_specs(optimization_config.optimization.requirements)
-    violated = [result.requirement.name for result in basis.evaluate(built_box, CATALOG) if not result.satisfied]
+    basis = CertificationBasis.from_specs(optimization_config.constraints, CATALOG)
+    violated = [result.constraint.name for result in basis.evaluate(built_box) if not result.satisfied]
     assert not violated, f"The baseline B738 violates {violated}"
-
-
-# =============================================================================================
-# The generic response limit
-# =============================================================================================
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize("sense", ["upper", "lower"])
-def test_a_response_limit_constrains_whatever_it_is_pointed_at(sense):
-    """The escape hatch: a limit on any reported response, with the sense stated in the case."""
-    requirement = ResponseLimit(
-        limit=20000.0,
-        regulation="design",
-        source="Usable fuel volume of the wing box",
-        units="kg",
-        options={"response": "total_fuel", "sense": sense},
-    )
-    assert requirement.sense == sense
-    assert requirement.name == "response_limit_total_fuel"
-    assert requirement.response_name() == "total_fuel"
-    assert requirement.path(CATALOG) == "mission.loiter.fuel_burn_integ.fuel_burn_final"
-    assert "total_fuel" in requirement.title
-    assert ("at most" if sense == "upper" else "at least") in requirement.title
-
-    result = requirement.evaluate(FakeBox({requirement.path(CATALOG): 18597.3}), CATALOG)
-    assert result.satisfied is (sense == "upper")
-
-
-@pytest.mark.unit
-def test_a_requirement_with_an_impossible_sense_is_refused():
-    """``sense`` decides which way every margin runs; a third value would silently mean one."""
-    with pytest.raises(RequirementError, match="must be 'upper' or 'lower'"):
-        ResponseLimit(
-            limit=1.0,
-            regulation="design",
-            source="a reason",
-            options={"response": "total_fuel", "sense": "sideways"},
-        )
-
-
-# =============================================================================================
-# The catalogue
-# =============================================================================================
-
-
-@pytest.mark.unit
-def test_a_catalog_refuses_a_class_that_cannot_be_named():
-    """A requirement with no ``kind`` could never appear in a case file."""
-
-    class Anonymous(Requirement):
-        response = "MTOW"
-
-    with pytest.raises(RequirementError, match="declares no 'kind'"):
-        RequirementCatalog([Anonymous])
-
-
-@pytest.mark.unit
-def test_a_catalog_resolves_a_kind_to_its_class_and_lists_what_it_has():
-    """The lookup a case file's ``type`` goes through."""
-    catalog = RequirementCatalog()
-    assert catalog.requirement_class("balanced_field_length") is BalancedFieldLength
-    assert len(catalog) == 6
-    with pytest.raises(RequirementError, match="Available:"):
-        catalog.requirement_class("no_such_requirement")
-    assert repr(catalog) == "RequirementCatalog(6 types)"
-
-
-# =============================================================================================
-# Representations and accessors
-# =============================================================================================
-
-
-@pytest.mark.unit
-def test_requirements_and_results_repr_as_what_they_assert():
-    """Both end up in debugger frames while a certification argument is being checked."""
-    requirement = _field_length()
-    assert repr(requirement) == "BalancedFieldLength(upper 8000.0, '14 CFR 25.113')"
-
-    result = requirement.evaluate(FakeBox({requirement.path(CATALOG): 6000.0}), CATALOG)
-    assert repr(result) == "RequirementResult('balanced_field_length', 6000.0000, MET)"
-
-
-@pytest.mark.unit
-def test_a_requirement_exposes_the_options_it_was_given():
-    """A report that could not name which phase a throttle limit applied to would be ambiguous."""
-    throttle = ThrottleLimit(1.0, "design", "engine deck", options={"phase": "climb"})
-    assert throttle.options == {"phase": "climb"}
-    assert throttle.phase == "climb"
-
-
-@pytest.mark.unit
-def test_a_basis_exposes_its_requirements_and_reprs_as_their_count():
-    """The basis is iterated when constraints are registered and when a report is written."""
-    basis = CertificationBasis([_field_length()])
-    assert len(basis) == 1
-    assert basis.requirements[0].regulation == "14 CFR 25.113"
-    assert [r.name for r in basis] == ["balanced_field_length"]
-    assert repr(basis) == "CertificationBasis(1 requirements)"

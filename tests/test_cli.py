@@ -71,15 +71,15 @@ def test_optimize_runs_the_study_and_reports_the_traceability_matrix(tmp_path, c
     printed = capsys.readouterr().out
 
     assert status == 0, printed
-    assert "Certification basis" in printed
+    assert "Constraints" in printed
     assert "14 CFR 25.121(b)(1)(i)" in printed
     assert "SUCCEEDED" in printed
 
     archived = json.loads(destination.read_text(encoding="utf-8"))
     assert archived["succeeded"] is True
     assert archived["objective"] == "total_fuel"
-    assert {entry["status"] for entry in archived["requirements"]} <= {"MET", "ACTIVE"}
-    assert all(entry["regulation"] and entry["source"] for entry in archived["requirements"])
+    assert {entry["status"] for entry in archived["constraints"]} <= {"MET", "ACTIVE"}
+    assert all(entry["traceable"] for entry in archived["constraints"])
 
 
 @pytest.mark.integration
@@ -134,12 +134,14 @@ def test_optimize_prints_without_being_asked_to_archive(tmp_path, capsys):
 
     def shrink(data):
         data["solver"]["maxiter"] = 60
-        data["optimization"]["driver"] = {"name": "IPOPT", "maxiter": 5, "tol": 1e-4, "derivative_mode": "fwd"}
-        data["optimization"]["design_variables"] = [{"name": "ac|geom|wing|AR", "lower": 9.3, "upper": 9.7}]
-        data["optimization"]["requirements"] = [
+        data["driver"] = {"name": "IPOPT", "maxiter": 5, "tol": 1e-4, "derivative_mode": "fwd"}
+        for spec in data["design_variables"].values():
+            spec.pop("optimize", None)
+        data["design_variables"]["ac|geom|wing|AR"]["optimize"] = {"lower": 9.3, "upper": 9.7}
+        data["constraints"] = [
             {
-                "type": "balanced_field_length",
-                "limit": 8000.0,
+                "name": "takeoff_field_length",
+                "upper": 8000.0,
                 "units": "ft",
                 "regulation": "14 CFR 25.113",
                 "source": "8000 ft dry runway at sea level, ISA",
@@ -150,7 +152,7 @@ def test_optimize_prints_without_being_asked_to_archive(tmp_path, capsys):
     assert main(["optimize", str(case)]) == 0
 
     printed = capsys.readouterr().out
-    assert "Certification basis" in printed
+    assert "Constraints" in printed
     assert "Results written to" not in printed
     assert not list(tmp_path.glob("*.json"))
 
