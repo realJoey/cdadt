@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cdadt"
-version = "0.1.0"
-description = "A Certification Driven Aircraft Design Tool"
+version = "0.2.0"
+description = "A certification-driven aircraft design tool that drives OpenConcept full-mission sizing as a black box"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.9"
@@ -13,11 +13,12 @@ authors = [{ name = "Joey Gould" }]
 keywords = [
     "aircraft design",
     "certification",
-    "multidisciplinary optimization",
+    "multidisciplinary design optimization",
     "openmdao",
+    "openconcept",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "Programming Language :: Python :: 3",
     "Topic :: Scientific/Engineering",
@@ -35,19 +36,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest",
-    "pytest-cov",
-    "packaging",
-    "black",
-    "ruff",
-]
-docs = [
-    "sphinx",
-    "sphinx_mdolab_theme",
-    "numpydoc",
-]
+dev = ["pytest", "pytest-cov", "black", "ruff"]
+docs = ["sphinx", "sphinx_rtd_theme", "numpydoc"]
 plot = ["matplotlib"]
+
+[project.scripts]
+cdadt = "cdadt.cli:main"
 
 [project.urls]
 Repository = "https://github.com/realJoey/cdadt"
@@ -61,8 +55,8 @@ testpaths = ["tests"]
 # a statement about what has actually been established.
 markers = [
     "unit: exercises one cdadt class in isolation, with no OpenMDAO model",
-    "integration: builds and runs a real OpenMDAO model",
     "contract: checks the cdadt <-> OpenConcept boundary itself",
+    "integration: builds and converges a real OpenConcept model",
     "validation: compares cdadt against an external reference that is run, not quoted",
     "slow: takes minutes; excluded from the fast loop",
 ]
