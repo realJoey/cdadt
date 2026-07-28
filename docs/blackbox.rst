@@ -31,7 +31,8 @@ show. Every class cdadt defines is walked and its whole inheritance chain checke
 any uncommitted change fails the suite. Separately, every commit the installed clone carries
 that upstream does not is examined, and the files it touches are compared against the modules
 actually loaded when a box is built -- taken from :data:`sys.modules`, so it is measured rather
-than assumed.
+than assumed. The clone these results were produced against carries none: it is exactly
+``mdolab/openconcept`` ``origin/main``. See :doc:`validation`.
 
 What is inside
 --------------
