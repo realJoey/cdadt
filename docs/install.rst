@@ -18,6 +18,20 @@ The environment
        packaging black ruff "libblas=*=*openblas"
    conda activate cdadt_env
    pip install sphinx_mdolab_theme
+   pip install "openaerostruct==2.7.1"
+
+.. warning::
+   **Pin OpenAeroStruct to 2.7.1.** It is not a free choice. OpenConcept 1.2.6 is
+   incompatible with OpenAeroStruct 2.12: eight of OpenConcept's *own* aerostructural tests
+   fail against it. At 2.7.1 -- the ceiling OpenConcept's ``setup.py`` pins for its docs
+   extra -- all 48 pass. Verify with:
+
+   .. code-block:: bash
+
+      pytest ../openconcept/openconcept/aerodynamics/openaerostruct/tests -q
+
+   The same rule as the NumPy bound applies: when the dependency and cdadt disagree, the
+   dependency's declared bounds are the truth, and the answer is never to patch it.
 
 Everything except the documentation theme comes from ``conda-forge``. This matters most for
 ``pyoptsparse``, ``ipopt``, and ``cyipopt``: conda-forge ships prebuilt IPOPT binaries for
