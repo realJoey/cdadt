@@ -65,17 +65,21 @@ scaled engine deck, tail volume coefficient sizing. Whether those are adequate f
 design study is a separate question, and cdadt cannot answer it because cdadt does not compute
 them.
 
-**The numbers correspond to a pinned OpenConcept checkout.** The installed clone is at commit
-``8ff3b24`` (2026-06-22). It carries three local commits, all touching
-``openconcept/aerodynamics/openaerostruct/aerostructural.py``, which cdadt never loads -- a
-contract test verifies exactly that, by comparing the files those commits touch against the
-modules actually present in :data:`sys.modules` after a box is built.
+**The numbers correspond to a specific OpenConcept checkout.** The installed clone is at commit
+``5614b60``, which is ``origin/main`` plus three local commits. Those three touch only
+``openconcept/aerodynamics/openaerostruct/aerostructural.py`` -- OpenAeroStruct 2.x and NumPy
+compatibility fixes made in earlier, unrelated work -- and cdadt never loads that module. A
+contract test verifies exactly that, by intersecting the files those commits touch with the
+modules actually present in :data:`sys.modules` after a box is built. Nothing has ever been
+pushed from that clone; ``origin`` is the upstream MDO Lab repository.
 
-It is also **ten commits behind** OpenConcept's ``main``, and one of those, "Modify BFL residual
-(#86)", changes ``openconcept/mission/phases.py``, which cdadt *does* load. The balanced field
-length numbers on this page therefore correspond to the older residual formulation. That is a
-statement about which OpenConcept is installed, not about cdadt, and updating the clone is a
-deliberate act with a numerical consequence -- which is why it is recorded rather than glossed.
+The clone was brought up to ``origin/main`` on 2026-07-28, from a checkout that was ten commits
+behind. The only upstream change affecting a module cdadt loads was "Modify BFL residual (#86)"
+in ``openconcept/mission/phases.py``, which refactors the decision-speed residual into a helper
+that selects the same branch at convergence. **Every quantity on this page is unchanged to all
+printed digits across that update**, balanced field length included, and the full suite passed
+before and after. That is worth recording precisely because it could have gone the other way:
+which OpenConcept is installed is part of the result, not part of the setup.
 
 Known gaps in the certification argument
 ----------------------------------------

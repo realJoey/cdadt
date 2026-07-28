@@ -75,6 +75,10 @@ and, at least as prominently, what has not — including that §25.121(b) is eva
 than in the takeoff configuration the regulation specifies, that there is no V<sub>MC</sub>, no
 approach speed and no CG model, and which OpenConcept commit these numbers correspond to.
 
+Nothing in this repository modifies OpenConcept, and nothing is ever pushed to it. The installed
+clone is checked for uncommitted changes by the test suite, and any commit it carries that
+upstream does not is checked against the modules cdadt actually loads.
+
 ## Install
 
 ```bash
