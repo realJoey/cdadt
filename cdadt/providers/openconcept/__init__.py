@@ -16,6 +16,7 @@ from cdadt.providers.openconcept.aerodynamics import (
     JetTransportMaximumLiftProvider,
 )
 from cdadt.providers.openconcept.geometry import TrapezoidalGeometryProvider
+from cdadt.providers.openconcept.landing import LandingPerformanceProvider
 from cdadt.providers.openconcept.propulsion import RubberizedTurbofanProvider
 from cdadt.providers.openconcept.stability import TailVolumeCoefficientProvider
 from cdadt.providers.openconcept.weights import (
@@ -28,6 +29,7 @@ __all__ = [
     "JetTransportDragProvider",
     "JetTransportEmptyWeightProvider",
     "JetTransportMaximumLiftProvider",
+    "LandingPerformanceProvider",
     "RubberizedTurbofanProvider",
     "TailVolumeCoefficientProvider",
     "TrapezoidalGeometryProvider",

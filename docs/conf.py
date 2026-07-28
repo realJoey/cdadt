@@ -40,6 +40,9 @@ nitpick_ignore_regex = [
     ("py:.*", r"openconcept\..*"),
     ("py:.*", r"openmdao\..*"),
     ("py:.*", r"cdadt\.tests\..*"),
+    # Private base classes appear in `:show-inheritance:` chains but are not documented,
+    # which is the intent: they are implementation detail, not public API.
+    ("py:.*", r"cdadt\..*\._[A-Za-z].*"),
 ]
 
 try:

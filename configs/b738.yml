@@ -33,6 +33,10 @@ ac:
     takeoff_flap_deg:
       value: 15
       units: deg
+    landing_flap_deg:
+      value: 40
+      units: deg
+      source: "Boeing 737-800 maximum landing flap setting"
 
   # ============================================================================
   # Propulsion
@@ -340,6 +344,78 @@ mission:
           vs:
             value: [-800.0, -800.0]
             units: ft/min
+
+# ==============================================================================
+# Certification basis
+# ==============================================================================
+# Every limit here comes from a regulation *and* an operating case. The regulation says
+# what must be demonstrated; the case -- which runway, which altitude, which approach
+# category -- says against what. cdadt requires both to be stated, so the traceability
+# matrix can cite the limit as well as the rule.
+certification:
+  takeoff:
+    field_length_available:
+      value: 8000.0
+      units: ft
+      source: >-
+        Design requirement: takeoff field length available at the critical airport,
+        sea level ISA. 14 CFR 25.113 defines the distance; this is what it must fit in.
+
+  climb:
+    oei_second_segment_gradient:
+      value: 0.024
+      source: >-
+        14 CFR 25.121(b): 2.4% steady gradient of climb at V2 with the critical engine
+        inoperative, for two-engine aeroplanes. Three-engine is 2.7%, four-engine 3.0%.
+
+  propulsion:
+    throttle_max:
+      value: 1.05
+      source: >-
+        Design constraint, not a regulation. Slightly above rated so a converging solver
+        may pass through the boundary without the constraint chattering.
+
+  landing:
+    field_length_available:
+      value: 7000.0
+      units: ft
+      source: >-
+        Design requirement: landing field length available at the critical airport.
+
+    approach_speed_max:
+      value: 140.0
+      units: kn
+      source: >-
+        Upper bound of approach category C (121-140 kn at maximum landing weight), which
+        determines which approach procedures and airports the aircraft can use.
+
+    approach_speed_factor:
+      value: 1.23
+      source: >-
+        14 CFR 25.125(a)(2): V_REF must be at least 1.23 V_SR0. This is the regulatory
+        floor; a higher value may be flown in practice.
+
+    airborne_distance:
+      value: 305.0
+      units: m
+      source: >-
+        Distance flown from the 50 ft screen height to touchdown, at a 3 degree approach
+        with a flare. Transport-category conceptual design value; depends on the
+        procedure flown and is stated here rather than inferred.
+
+    mean_deceleration:
+      value: 3.0
+      units: m/s**2
+      source: >-
+        Mean deceleration during the ground roll with wheel braking and spoilers on a dry
+        runway, roughly 0.3 g. Depends on the braking system and runway condition.
+
+    dispatch_factor:
+      value: 0.6
+      source: >-
+        14 CFR 121.195(b): a turbine-powered transport may be dispatched only to an
+        airport where it can land within 60% of the effective runway length. Wet-runway
+        dispatch under 121.195(d) uses a different factor.
 
 # ==============================================================================
 # Solver

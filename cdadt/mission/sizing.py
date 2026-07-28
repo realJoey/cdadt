@@ -21,9 +21,13 @@ loop would converge just as readily on the wrong answer.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 import openmdao.api as om
 from openconcept.utilities import AddSubtractComp
+
+if TYPE_CHECKING:  # pragma: no cover - import only for type checking
+    from cdadt.certification.basis import CertificationBasis
 
 from cdadt.core.configuration import AircraftConfiguration
 from cdadt.core.discipline import Discipline, DisciplineGroup, DisciplineScope
@@ -86,7 +90,9 @@ class SizingLoop:
         config: AircraftConfiguration,
         profile: MissionProfile | None = None,
         num_nodes: int = 11,
+        certification: CertificationBasis | None = None,
     ) -> None:
+        self._certification = certification
         self._config = config
         self._disciplines = tuple(disciplines)
         self._aircraft = tuple(d for d in self._disciplines if d.scope is DisciplineScope.AIRCRAFT)
@@ -175,9 +181,39 @@ class SizingLoop:
         self._add_weight_closure(model)
         self._blackbox.build(model)
 
+        # Requirements may contribute components -- landing performance, which the mission
+        # does not model -- and both those components and their constraints have to be in
+        # place before setup. Registering here rather than leaving it to the caller is
+        # deliberate: a certification basis that was attached but never registered would
+        # report margins in the traceability matrix while the optimizer ran unconstrained.
+        if self._certification is not None:
+            self._certification.build(model, self._blackbox)
+            self._certification.register(model, self._blackbox)
+
         self._configure_solvers(model)
         problem.setup(check=False)
         return problem
+
+    @property
+    def certification(self) -> CertificationBasis | None:
+        """Return the certification basis attached to this loop, if any."""
+        return self._certification
+
+    def traceability_matrix(self, problem: om.Problem) -> str:
+        """Return the certification traceability matrix for a converged problem.
+
+        Raises
+        ------
+        ValueError
+            If no certification basis was attached. An empty matrix would read as "nothing
+            was violated" when the truth is that nothing was checked.
+        """
+        if self._certification is None:
+            raise ValueError(
+                "This SizingLoop has no certification basis, so there is no traceability matrix. "
+                "Pass certification=CertificationBasis([...]) to report against requirements."
+            )
+        return self._certification.traceability_matrix(problem, self._blackbox)
 
     def _add_design_parameters(self, model: om.Group) -> None:
         """Add an independent variable for every configured design parameter.

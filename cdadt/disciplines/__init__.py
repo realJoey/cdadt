@@ -24,6 +24,7 @@ Phase-scoped -- built inside every mission phase
 
 from cdadt.disciplines.aerodynamics import Aerodynamics, MaximumLift
 from cdadt.disciplines.geometry import Geometry
+from cdadt.disciplines.landing import LandingPerformance
 from cdadt.disciplines.propulsion import Propulsion
 from cdadt.disciplines.stability import Stability
 from cdadt.disciplines.weights import EmptyWeight, MassBookkeeping
@@ -32,6 +33,7 @@ __all__ = [
     "Aerodynamics",
     "EmptyWeight",
     "Geometry",
+    "LandingPerformance",
     "MassBookkeeping",
     "MaximumLift",
     "Propulsion",

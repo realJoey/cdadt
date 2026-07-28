@@ -10,3 +10,4 @@ API reference
    core
    mission
    disciplines
+   certification
