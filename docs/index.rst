@@ -48,6 +48,7 @@ against published hand calculations; see :ref:`verification`.
    architecture
    blackbox
    certification
+   optimization
 
 .. toctree::
    :maxdepth: 2

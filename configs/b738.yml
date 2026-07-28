@@ -236,6 +236,22 @@ mission:
     value: 100.0
     units: kn
 
+  # Speed the ground roll starts from. OpenConcept uses 2 m/s as a stand-in for zero, but
+  # at that speed the skin-friction correlation in its own parasite drag buildup is outside
+  # its domain -- log(0.06 Re) and sqrt(Re) both return NaN as Re passes through zero. That
+  # is why OpenConcept's own B738_sizing example does not converge in this environment, and
+  # during optimization it appears as an "Invalid Number Detected" exit.
+  #
+  # cdadt does not modify OpenConcept, so it starts the roll higher. This credits the
+  # aircraft with the first few metres of acceleration and shortens the computed field
+  # length slightly, so it is stated here rather than adjusted quietly.
+  ground_roll_initial_speed:
+    value: 10.0
+    units: kn
+    source: >-
+      Lowest ground speed at which OpenConcept's ParasiteDragCoefficient_JetTransport
+      skin-friction correlation is numerically valid. Not a physical parameter.
+
   schedule:
     climb:
       Ueas:
@@ -416,6 +432,64 @@ certification:
         14 CFR 121.195(b): a turbine-powered transport may be dispatched only to an
         airport where it can land within 60% of the effective runway length. Wet-runway
         dispatch under 121.195(d) uses a different factor.
+
+# ==============================================================================
+# Optimization
+# ==============================================================================
+# Bounds keep the optimizer inside the range the model's empirical methods were fitted
+# over. They are not preferences: a wing of aspect ratio 20 is outside the correlation the
+# jet-transport weight buildup was derived from, and the model would still return a number.
+optimization:
+  max_iterations:
+    value: 60
+  tolerance:
+    value: 1.0e-6
+
+  # Magnitude the objective is expected to take. The objective is divided by it so the
+  # optimizer sees a quantity near one alongside the non-dimensionalized constraints.
+  # There is no default: a fuel burn and an empty weight are both in kilograms and differ
+  # by a factor of three, and a takeoff distance in feet by three more.
+  objective_reference:
+    value: 20000.0
+    source: "Order of magnitude of total mission fuel in kg for this class of aircraft."
+
+  design_variables:
+    ac:
+      geom:
+        wing:
+          S_ref:
+            lower:
+              value: 95.0
+              units: m**2
+            upper:
+              value: 175.0
+              units: m**2
+          AR:
+            lower:
+              value: 7.0
+            upper:
+              value: 11.0
+          c4sweep:
+            lower:
+              value: 15.0
+              units: deg
+            upper:
+              value: 35.0
+              units: deg
+          taper:
+            lower:
+              value: 0.12
+            upper:
+              value: 0.40
+      propulsion:
+        engine:
+          rating:
+            lower:
+              value: 20000.0
+              units: lbf
+            upper:
+              value: 34000.0
+              units: lbf
 
 # ==============================================================================
 # Solver

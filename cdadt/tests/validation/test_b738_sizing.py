@@ -341,17 +341,22 @@ def test_the_converged_result_has_not_drifted(sized_b738):
     this module's docstring. Treat the values as a change detector until that is resolved.
 
     Tolerances are loose enough to absorb platform floating-point differences and tight
-    enough that any real modeling change trips them.
+    enough that any real modeling change trips them -- which is what they are for. These
+    values moved once already, when the ground roll was changed to start from a configured
+    speed rather than OpenConcept's 2 m/s stand-in for zero: the balanced field length
+    shortened from 5247.7 ft to 5230.0 ft, because the aircraft is now credited with the
+    first few metres of acceleration. That is a real modeling change with a real
+    consequence, and the golden moving is the test doing its job.
     """
     _, _, results = sized_b738
     golden = {
-        "MTOW": 78345.0,
-        "OEW": 41748.2,
-        "MLW": 62676.0,
-        "block_fuel": 15976.6,
-        "total_fuel": 18596.8,
-        "takeoff_field_length": 5247.7,
-        "decision_speed": 135.06,
+        "MTOW": 78341.2,
+        "OEW": 41747.4,
+        "MLW": 62672.9,
+        "block_fuel": 15973.5,
+        "total_fuel": 18593.8,
+        "takeoff_field_length": 5230.0,
+        "decision_speed": 135.11,
         "engine_out_climb_gradient": 0.0422,
     }
     drifted = {

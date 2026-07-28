@@ -28,7 +28,15 @@ import openmdao.api as om
 from cdadt.core.configuration import AircraftConfiguration
 from cdadt.mission.blackbox import MissionBlackBox
 
-__all__ = ["CertificationBasis", "Requirement", "RequirementResult", "Sense"]
+__all__ = ["ACTIVE_TOLERANCE", "CertificationBasis", "Requirement", "RequirementResult", "Sense"]
+
+#: Relative margin within which a requirement counts as binding rather than violated.
+#:
+#: A converged optimizer lands a constraint a hair either side of its bound, so testing
+#: satisfaction by exact sign reports an active requirement as violated by 1e-14 of a knot.
+#: This is a *reporting* tolerance for the traceability matrix, not a relaxation of the
+#: constraint the optimizer enforced.
+ACTIVE_TOLERANCE = 1.0e-6
 
 
 class Sense:
@@ -61,7 +69,7 @@ class RequirementResult:
     units : str or None
         Units of both value and limit.
     satisfied : bool
-        Whether the design meets the requirement.
+        Whether the design meets the requirement, within :data:`ACTIVE_TOLERANCE`.
     margin : float
         Signed margin in the requirement's units: positive when satisfied, and zero when
         the requirement is exactly binding. For an upper limit this is ``limit - value``;
@@ -74,6 +82,24 @@ class RequirementResult:
     units: str | None
     satisfied: bool
     margin: float
+
+    @property
+    def active(self) -> bool:
+        """Return whether this requirement is binding, within floating-point tolerance.
+
+        An active requirement is the interesting result of an optimization: it is a
+        requirement that shaped the design. Reporting it as merely "met" hides that, and
+        reporting it as "not met" -- which exact-equality testing does, because a converged
+        optimizer lands a hair either side of the bound -- is worse still.
+        """
+        return abs(self.margin) <= ACTIVE_TOLERANCE * max(abs(self.limit), 1.0)
+
+    @property
+    def status(self) -> str:
+        """Return ``"MET"``, ``"ACTIVE"`` or ``"NOT MET"``."""
+        if self.active:
+            return "ACTIVE"
+        return "MET" if self.satisfied else "NOT MET"
 
     @property
     def relative_margin(self) -> float:
@@ -197,7 +223,18 @@ class Requirement(ABC):
         """
 
     def register(self, model: om.Group, blackbox: MissionBlackBox) -> None:
-        """Register this requirement's constraint with the optimizer.
+        """Register this requirement's constraint with the optimizer, scaled to order one.
+
+        The constraint is scaled by ``1 / |limit|``, which makes every requirement's
+        constraint value order one regardless of the units it is expressed in.
+
+        This is not cosmetic. A certification basis spans a balanced field length of
+        thousands of feet, an approach speed of a hundred-odd knots, and a climb gradient of
+        a few hundredths of a radian. Presented unscaled, an optimizer sees the field-length
+        constraint as five orders of magnitude more important than the climb gradient, and
+        the climb gradient as satisfied to within noise. Interior-point methods in
+        particular then struggle to restore feasibility, and exit without certifying
+        optimality on a design that is in fact very nearly optimal.
 
         Parameters
         ----------
@@ -206,8 +243,10 @@ class Requirement(ABC):
         blackbox : MissionBlackBox
             The mission, for resolving the constrained path.
         """
-        bound = {self.sense: self.limit()}
-        model.add_constraint(self.constrained_path(blackbox), units=self.units, **bound)
+        limit = self.limit()
+        scaler = 1.0 / abs(limit) if limit != 0.0 else 1.0
+        bound = {self.sense: limit}
+        model.add_constraint(self.constrained_path(blackbox), units=self.units, scaler=scaler, **bound)
 
     def evaluate(self, problem: om.Problem, blackbox: MissionBlackBox) -> RequirementResult:
         """Read the achieved value from a run problem and report the margin.
@@ -330,25 +369,41 @@ class CertificationBasis:
         """
         results = sorted(self.evaluate(problem, blackbox), key=lambda r: r.relative_margin)
 
-        header = f"{'regulation':>16s}  {'requirement':<28s} {'value':>13s} {'limit':>13s} {'margin':>13s}  status"
+        header = (
+            f"{'regulation':<20s} {'requirement':<32s} {'value':>13s} {'limit':>13s} "
+            f"{'margin':>13s} {'units':<8s} status"
+        )
         lines = [header, "-" * len(header)]
         for result in results:
-            units = f" {result.units}" if result.units else ""
             lines.append(
-                f"{result.requirement.regulation:>16s}  {result.requirement.title[:28]:<28s} "
-                f"{result.value:13.4f} {result.limit:13.4f} {result.margin:13.4f}  "
-                f"{'MET' if result.satisfied else 'NOT MET'}{units}"
+                f"{result.requirement.regulation:<20s} {result.requirement.title[:32]:<32s} "
+                f"{result.value:13.4f} {result.limit:13.4f} {result.margin:13.4f} "
+                f"{result.units or '-':<8s} {result.status}"
             )
 
-        lines.append("")
-        lines.append("Limit sources:")
+        # Sources are listed per requirement, deduplicated: several throttle-margin
+        # requirements share one rationale and repeating it obscures the regulations.
+        lines += ["", "Limit sources:"]
+        seen = set()
         for requirement in self._requirements:
             source = requirement.limit_source or "not recorded"
+            key = (requirement.regulation, source)
+            if key in seen:
+                continue
+            seen.add(key)
             lines.append(f"  {requirement.regulation}: {source}")
 
-        unmet = [r for r in results if not r.satisfied]
-        lines.append("")
-        lines.append(f"{len(results) - len(unmet)} of {len(results)} requirements met.")
+        unmet = [r for r in results if not r.satisfied and not r.active]
+        active = [r for r in results if r.active]
+        lines += [
+            "",
+            f"{len(results) - len(unmet)} of {len(results)} requirements met "
+            f"({len(active)} active, {len(unmet)} not met).",
+        ]
+        if active:
+            lines.append(
+                "Active requirements shaped this design: " + ", ".join(r.requirement.regulation for r in active)
+            )
         return "\n".join(lines)
 
     def __repr__(self) -> str:

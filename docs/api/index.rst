@@ -11,3 +11,4 @@ API reference
    mission
    disciplines
    certification
+   optimization

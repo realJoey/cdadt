@@ -167,6 +167,7 @@ class MissionProfile:
     parameters: Mapping[str, tuple[float, str | None]]
     continuation: Sequence[ContinuationStep] = ()
     takeoff_speed_guess: tuple[float, str] = (100.0, "kn")
+    ground_roll_initial_speed: tuple[float, str] | None = None
 
     @classmethod
     def from_config(cls, config, root: str = "mission") -> MissionProfile:
@@ -234,8 +235,10 @@ class MissionProfile:
             )
 
         guess_path = f"{prefix}takeoff_speed_guess"
-        config.require_all([guess_path])
+        initial_speed_path = f"{prefix}ground_roll_initial_speed"
+        config.require_all([guess_path, initial_speed_path])
         takeoff_speed_guess = (config.scalar(guess_path), config.units(guess_path))
+        ground_roll_initial_speed = (config.scalar(initial_speed_path), config.units(initial_speed_path))
 
         continuation = []
         continuation_prefix = f"{prefix}continuation|"
@@ -285,6 +288,7 @@ class MissionProfile:
             parameters=parameters,
             continuation=continuation,
             takeoff_speed_guess=takeoff_speed_guess,
+            ground_roll_initial_speed=ground_roll_initial_speed,
         )
 
     def __post_init__(self) -> None:
@@ -463,6 +467,7 @@ class MissionBlackBox:
         self._apply_parameters(problem, self._profile.parameters)
         self._apply_schedules(problem, self._profile.schedules)
         self._apply_takeoff_speed_guesses(problem)
+        self._apply_ground_roll_initial_speed(problem)
 
     def converge(self, problem: om.Problem, verbose: bool = False) -> None:
         """Set the profile and run the continuation schedule up to the design mission.
@@ -527,6 +532,31 @@ class MissionBlackBox:
                     np.full(self._num_nodes, value),
                     units=units,
                 )
+
+    def _apply_ground_roll_initial_speed(self, problem: om.Problem) -> None:
+        """Set the speed the ground roll starts from.
+
+        OpenConcept starts its ground roll at 2 m/s. That is not a physical choice so much
+        as a stand-in for zero, and at that speed the skin-friction correlation inside its
+        own parasite drag buildup is outside its domain: it evaluates
+        ``0.523 / log(0.06 Re)**2`` and ``1.32824 / sqrt(Re)``, both of which return ``NaN``
+        as the Reynolds number passes through zero. The failure is real and reproducible --
+        it is why OpenConcept's own ``B738_sizing`` example does not converge here -- and
+        during an optimization it appears as an "Invalid Number Detected" exit with no
+        indication of where it came from.
+
+        cdadt does not modify OpenConcept, so it starts the roll from a configured speed
+        instead. This is a modeling decision with a real, if small, consequence: the
+        aircraft is credited with the first few metres of acceleration, which shortens the
+        computed field length slightly. It is therefore configured with a stated reason
+        rather than adjusted quietly until the optimizer stops failing.
+        """
+        if self._profile.ground_roll_initial_speed is None:
+            return
+        value, units = self._profile.ground_roll_initial_speed
+        for spec in MISSION_PHASES:
+            if spec.kind.name == "GROUND_ROLL":
+                problem.set_val(f"{self._group_name}.{spec.subsystem}.zero_speed", value, units=units)
 
     def __repr__(self) -> str:
         """Return a representation naming the model class and node count."""
