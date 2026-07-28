@@ -243,7 +243,7 @@ class Optimizer:
         self._analysis.converge(verbose=verbose)
         baseline = self._analysis.results()
 
-        failed = self._analysis.box.run_driver()
+        driver_succeeded = self._analysis.box.run_driver()
 
         optimum = self._analysis.results()
         requirements = self._basis.evaluate(self._analysis.box, self._catalog)
@@ -253,7 +253,7 @@ class Optimizer:
             requirements=requirements,
             objective=self._settings.objective.name,
             sense=self._settings.objective.sense,
-            failed=bool(failed),
+            failed=not driver_succeeded,
         )
 
     def _declare(self, model: om.Group) -> None:

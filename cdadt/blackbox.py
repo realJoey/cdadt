@@ -563,9 +563,18 @@ class OpenConceptSizingBox:
         Returns
         -------
         bool
-            ``True`` if the driver reported failure, following OpenMDAO's own convention.
+            Whether the driver reported success.
+
+        Notes
+        -----
+        OpenMDAO's ``run_driver`` historically returned a *failure* flag and now returns a
+        result object whose truthiness reproduces that, under a deprecation warning. Reading
+        ``success`` where it exists keeps cdadt on the supported attribute and, more usefully,
+        means the value this method returns says what it means.
         """
-        return self.problem.run_driver()
+        result = self.problem.run_driver()
+        success = getattr(result, "success", None)
+        return bool(success) if success is not None else not bool(result)
 
     def __repr__(self) -> str:
         """Return a representation naming the model and the node count."""
