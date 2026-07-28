@@ -1,122 +1,126 @@
 # cdadt
 
-A Certification Driven Aircraft Design Tool.
+A certification-driven aircraft design tool.
 
-cdadt sizes and optimizes aircraft against an explicit certification basis. Regulatory
-requirements — 14 CFR Part 25 §25.113 balanced field length, §25.121 one-engine-inoperative
-climb gradient, §25.125 landing field length, approach speed category, and thrust margin —
-are modeled as first-class objects that know their citation, the variables they read, and
-the optimizer constraint they register. Every run emits a traceability matrix linking each
-regulation to the constraint that enforced it and the margin achieved.
+cdadt sizes and optimizes an aircraft against an explicit certification basis. Full mission
+sizing — balanced-field takeoff, climb, cruise, descent, 14 CFR Part 25 reserves and loiter —
+comes from [OpenConcept](https://github.com/mdolab/openconcept), used as a black box: cdadt
+sets its inputs, converges it, and reads its outputs. **No OpenConcept source is modified, and
+no OpenConcept class is subclassed.** Both are enforced by the test suite.
 
-## Result
+## Validated against the reference
 
-Minimizing total mission fuel for a Boeing 737-800 — design mission plus Part 25 reserves,
-2800 nmi with 18 t payload — with wing area, aspect ratio, sweep, taper and engine rating
-free. IPOPT exits `Solve Succeeded`:
+cdadt reproduces OpenConcept's own `B738_sizing.py` example, every quantity, at 21 nodes per
+phase:
+
+| Quantity | OpenConcept | cdadt |
+|---|---|---|
+| MTOW (kg) | 78345.6435 | 78345.6435 |
+| OEW (kg) | 41748.3258 | 41748.3258 |
+| Block fuel (kg) | 15977.0628 | 15977.0628 |
+| Total fuel with reserves (kg) | 18597.3177 | 18597.3177 |
+| Balanced field length (ft) | 5247.7948 | 5247.7948 |
+| Horizontal tail area (m²) | 27.9332 | 27.9332 |
+| Vertical tail area (m²) | 20.2101 | 20.2101 |
+
+Agreement is better than 1e-6 relative — the Newton solver's own convergence. The reference is
+*run* in the test, not quoted from a table.
+
+## Optimized against a certification basis
+
+Minimizing total mission fuel over wing area, aspect ratio, sweep, taper and engine rating,
+subject to §25.113 field length, §25.121(b) engine-out climb gradient, approach category and
+throttle limits:
 
 | Quantity | Baseline | Optimum | Change |
 |---|---|---|---|
-| Total fuel (kg) | 18,594 | 17,164 | **−7.7%** |
-| MTOW (kg) | 78,341 | 75,249 | −3.9% |
-| Engine rating (lbf) | 27,000 | 22,185 | −17.8% |
+| Total fuel (kg) | 18596.83 | 15991.39 | **−14.0%** |
+| MTOW (kg) | 78345.02 | 71959.34 | −8.2% |
+| Engine rating (lbf) | 27000 | 21911 | −18.8% |
 
-Ten of ten requirements met, **two active** — the category C approach speed limit and the
-climb throttle limit. Those two shaped the design.
+Five of five requirements met, one active — the climb throttle limit. That constraint is what
+shaped the design.
 
 ```
-regulation           requirement                          value       limit      margin units  status
------------------------------------------------------------------------------------------------------
-14 CFR 97 / ICAO cat Approach speed within category    140.0000    140.0000     -0.0000 kn     ACTIVE
-design               Throttle within limit in climb      1.0500      1.0500      0.0000 -      ACTIVE
-14 CFR 25.125        Landing field length within a    6395.0866   7000.0000    604.9134 ft     MET
-14 CFR 25.121(b)     OEI second-segment climb grad       0.0311      0.0240      0.0071 rad    MET
-14 CFR 25.113        Takeoff distance within field    5213.5158   8000.0000   2786.4842 ft     MET
+regulation             requirement                                 value        limit       margin units  status
+----------------------------------------------------------------------------------------------------------------
+design                 Throttle within limit in climb             1.0000       1.0000      -0.0000 -      ACTIVE
+14 CFR 25.125 / 97     Approach speed within category           136.4991     140.0000       3.5009 kn     MET
+design                 Throttle within limit in cruise            0.8287       1.0000       0.1713 -      MET
+14 CFR 25.113          Takeoff distance within field availa    6263.7145    8000.0000    1736.2855 ft     MET
+14 CFR 25.121(b)       OEI second-segment climb gradient          0.0406       0.0240       0.0166 rad    MET
 ```
 
 ## Design rules
 
-- **Every discipline is an object.** Aerodynamics, propulsion, weights, geometry, stability
-  and landing are classes with encapsulated state that declare what they provide and
-  require. No global state, no free-function discipline math. Each delegates to a swappable
-  *provider*, so an empirical buildup and a high-fidelity analysis satisfy one interface.
-- **The mission analysis is a black box.** Full mission sizing — balanced-field takeoff,
-  climb, cruise, descent, Part 25 reserves, loiter — comes from
-  [OpenConcept](https://github.com/mdolab/openconcept). cdadt consumes it through a single
-  boundary class and **never modifies OpenConcept**. An AST scan fails the test suite if any
-  other module imports it, and a `git status` check fails if the clone is dirty.
-- **Nothing is defaulted.** `AircraftConfiguration.value` has no `default` parameter and
-  will not get one. A method constant supplied as a default is a hardcoded number that
-  happens to carry a citation: it applies itself to configurations that never mentioned it.
-  This includes constants OpenConcept itself defaults — tail volume coefficients, the MLW
-  fraction, the engine deck.
-- **Nothing is claimed that is not verified.** Every test states its class of claim (unit /
-  contract / derivative / integration / validation / regression), and `docs/validation.rst`
-  states what has *not* been validated with equal prominence.
+- **Every discipline is a class.** Aerodynamics, propulsion, mass, geometry, stability, high
+  lift and weights are `om.Group` subclasses that own their own analysis, promote their own
+  variables, and never reach into a sibling. No global state, no module-level caches, no
+  free-function discipline math.
+- **OpenConcept is composed, never inherited.** Subclassing an OpenConcept component would
+  change its behaviour while leaving its source untouched — a modification no diff would show.
+  A test walks every class cdadt defines and fails on any OpenConcept base.
+- **Nothing is defaulted that belongs to a case.** Every certification limit is a constructor
+  argument, and so is its `source`. A limit with no recorded provenance is indistinguishable
+  from a guess in the report that quotes it.
+- **What is not validated is stated as prominently as what is.** See `docs/validation.rst`.
 
-## Installation
-
-Requires the `cdadt_env` conda environment. Full instructions, including the mandatory
-OpenBLAS pin and the `--no-deps` OpenConcept install, are in `docs/install.rst`.
+## Install
 
 ```bash
-conda create -y -n cdadt_env -c conda-forge python=3.11 numpy scipy matplotlib \
-    openmdao pyoptsparse ipopt cyipopt pytest pytest-cov pyyaml sphinx numpydoc
+conda create -y -n cdadt_env -c conda-forge python=3.11 "numpy<2" scipy matplotlib pyyaml \
+    openmdao pyoptsparse ipopt cyipopt pytest pytest-cov sphinx sphinx_rtd_theme ruff black
 conda install -y -n cdadt_env -c conda-forge "libblas=*=*openblas"
 conda activate cdadt_env
-pip install -e /path/to/openconcept --no-deps
+
+pip install -e /path/to/openconcept --no-deps   # --no-deps is required; see docs/install.rst
 pip install -e ".[dev]"
-pytest cdadt/tests/test_environment.py -v
 ```
 
-> The OpenBLAS pin is not optional on Windows. With MKL-backed BLAS, NumPy aborts the
-> interpreter (`0xc06d007f`) inside `numpy.linalg.solve`, which OpenConcept calls at import.
+The OpenBLAS pin is not optional on Windows: with MKL-backed BLAS, NumPy aborts the
+interpreter (`0xc06d007f`) inside `numpy.linalg.solve`, which OpenConcept calls at import.
 
-## Running
+## Run
 
 ```bash
-python examples/optimize_b738.py                      # size, optimize, report
-python examples/optimize_b738.py --objective MTOW     # minimize takeoff weight instead
-pytest -q -m "not slow"                               # fast test loop
-pytest -q                                             # everything (~70 s)
+python examples/size_b738.py                          # size, print results
+python examples/optimize_b738.py                      # optimize against the certification basis
+python examples/optimize_b738.py --objective MTOW
+
+pytest -q -m "not slow"                               # 43 tests, ~1 s
+pytest -q                                             # everything, ~13 s
+cd docs && make html
+```
+
+## Layout
+
+```
+cdadt/
+  aircraft.py       AircraftDefinition — ac| design parameters as encapsulated state
+  mission.py        MissionProfile, PhaseSchedule — the mission and its continuation schedule
+  disciplines/      one class per engineering domain
+  model.py          JetTransportPhaseModel (what OpenConcept builds per phase), SizingModel
+  sizing.py         SizingAnalysis — build, converge, read results
+  certification.py  Requirement, CertificationBasis, and the shipped Part 25 requirements
+  optimization.py   DesignOptimizer, DesignVariable
+cases/              b738_aircraft.yaml, b738_mission.yaml
+examples/           size_b738.py, optimize_b738.py
+tests/              unit / integration / contract / validation
+docs/               Sphinx
 ```
 
 ## Documentation
 
-```bash
-cd docs && make html
-```
-
 | Page | Contents |
-|------|----------|
-| `install.rst` | Environment setup and why each flag is required |
-| `tutorials.rst` | Size, optimize, add a provider, add a requirement |
-| `architecture.rst` | OOP contracts, disciplines, providers, coupling checks |
-| `blackbox.rst` | The OpenConcept contract and why it is a contract, not a wall |
-| `certification.rst` | Requirements, the traceability matrix, how wiring is verified |
-| `optimization.rst` | The design problem, drivers, and why scaling decided the result |
-| `verification.rst` | Classes of claim and the rules the test suite obeys |
+|---|---|
+| `install.rst` | Environment setup, and why each flag is required |
+| `tutorials.rst` | Size, change the aircraft, optimize, add a requirement, swap a discipline |
+| `architecture.rst` | The eight classes, the two discipline scopes, the sizing loop |
+| `blackbox.rst` | Exactly what "black box" means, what goes in, what comes out |
+| `mission.rst` | The mission profile and why continuation is part of the interface |
+| `certification.rst` | Requirements, scaling, the traceability matrix, what is not modeled |
+| `optimization.rst` | Design variables, order of operations, why scaling decides the result |
 | `validation.rst` | What is validated, against what, **and what is not** |
-
-## Validation
-
-cdadt reproduces OpenConcept's own published golden values for the B737-800:
-
-| Quantity | OpenConcept golden | cdadt | Difference |
-|---|---|---|---|
-| Block fuel | 35,213.767 lbm | 35,215.7 lbm | +0.006% |
-| Total fuel | 40,991.188 lbm | 40,991.9 lbm | +0.002% |
-| MTOW | 172,711.303 lbm | 172,711.4 lbm | +0.0002% |
-
-A live run of the reference example is also compared quantity by quantity — balanced field
-length, V₁, tail areas, empty and landing weights. One quantity **deliberately** differs: the
-engine-out climb gradient. OpenConcept's example evaluates it with clean drag, while
-§25.121(b) specifies takeoff flaps; cdadt deploys them and gets 0.0422 rad against the
-reference's 0.0579. See `docs/validation.rst`.
-
-> **Environment matters.** OpenConcept declares `numpy >=1.20, <2` and the bound is real —
-> under NumPy 2 its own B738 test fails. Build the environment as documented; when the
-> reference disagrees with cdadt, the first suspect is the environment, not the reference.
 
 ## License
 
