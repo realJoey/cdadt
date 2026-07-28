@@ -56,18 +56,14 @@ Repository = "https://github.com/realJoey/cdadt"
 include = ["cdadt*"]
 
 [tool.pytest.ini_options]
-testpaths = ["cdadt/tests"]
+testpaths = ["tests"]
+# Every test declares what class of claim it makes, so that "the suite passes" can be read as
+# a statement about what has actually been established.
 markers = [
-    "unit: exercises a single cdadt class in isolation",
-    "contract: verifies the cdadt <-> OpenConcept interface contract",
-    "derivative: verifies analytic partials/totals against complex step",
-    "integration: builds and runs an assembled multi-discipline model",
-    "validation: compares cdadt results against an external reference or hand calculation",
-    "regression: pins a previously converged result against drift",
-    # Reserved for tests measured in minutes. The IPOPT optimization run is 98% of the
-    # suite's wall clock; everything else totals about 25 s. Marking merely-slow-ish tests
-    # here would push the OpenConcept validation gate out of the fast loop to save seconds,
-    # which is the wrong trade.
+    "unit: exercises one cdadt class in isolation, with no OpenMDAO model",
+    "integration: builds and runs a real OpenMDAO model",
+    "contract: checks the cdadt <-> OpenConcept boundary itself",
+    "validation: compares cdadt against an external reference that is run, not quoted",
     "slow: takes minutes; excluded from the fast loop",
 ]
 addopts = "--strict-markers"
@@ -92,9 +88,8 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 # Tests deliberately assert on broad exception types when the property under test is
-# "assignment raises", regardless of which exception type the implementation chooses.
-"cdadt/tests/*" = ["B017"]
+# "this raises", regardless of which exception type the implementation chooses.
+"tests/*" = ["B017"]
 
 [tool.coverage.run]
 source = ["cdadt"]
-omit = ["cdadt/tests/*"]

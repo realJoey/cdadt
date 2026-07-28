@@ -19,3 +19,4 @@ run_outputs/
 reports/
 IPOPT.out
 SLSQP.out
+.ruff_cache/
