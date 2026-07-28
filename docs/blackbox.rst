@@ -13,6 +13,13 @@ It means three specific things, each of which is enforced or is not claimed:
 **No OpenConcept source is modified.** :mod:`tests.test_openconcept_boundary` runs
 ``git status`` in the OpenConcept working tree and fails the suite on any uncommitted change.
 
+A clean working tree says nothing about local *commits*, and this development clone has three:
+compatibility fixes to ``openconcept/aerodynamics/openaerostruct/aerostructural.py`` for
+OpenAeroStruct 2.x and NumPy 2, made in earlier work. cdadt does not import that module. A
+second test enforces exactly that -- it diffs the clone against ``origin/main``, imports the
+whole of cdadt, and fails if any locally patched OpenConcept module turns out to be one cdadt
+loads. The guarantee is therefore specific and true rather than broad and approximate.
+
 **No OpenConcept class is subclassed.** Overriding a method would change a component's
 behaviour while leaving its source untouched -- a modification no diff of the clone would
 ever show. The same test walks every class cdadt defines and fails if any of them inherits

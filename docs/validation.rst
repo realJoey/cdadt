@@ -71,7 +71,8 @@ statement about what has been established.
     flaps deployed -- plus the assembled models' promotion structure.
 
 ``contract``
-    The OpenConcept boundary itself: the clone is clean, and no cdadt class inherits from an
+    The OpenConcept boundary itself: the clone has no uncommitted changes, no OpenConcept
+    module cdadt imports diverges from upstream, and no cdadt class inherits from an
     OpenConcept class.
 
 ``validation``

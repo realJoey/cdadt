@@ -1,12 +1,14 @@
 """Tests that OpenConcept is used, and not altered.
 
 "Black box" is a claim about behaviour, and behaviour claims need enforcement or they decay.
-Two things are checked here, and they are the two things that would actually go wrong:
+Three things are checked here, and they are the three things that would actually go wrong:
 
 1. The OpenConcept clone in use has no uncommitted modifications. Editing a dependency to make
    one's own model work is the failure mode this repository most needs to rule out, and a
    ``git status`` is the only check that catches it.
-2. cdadt defines no subclass of an OpenConcept class. Subclassing is how a wrapper quietly
+2. No OpenConcept module cdadt actually imports diverges from upstream. A clean working tree
+   says nothing about local *commits*, and this clone has three of them.
+3. cdadt defines no subclass of an OpenConcept class. Subclassing is how a wrapper quietly
    becomes a fork: an overridden ``compute`` looks like composition in the import graph and is
    a modification in fact. cdadt composes OpenConcept components inside its own
    :class:`openmdao.api.Group` subclasses instead, which this test permits and distinguishes.
@@ -18,6 +20,7 @@ import importlib
 import inspect
 import pkgutil
 import subprocess
+import sys
 from pathlib import Path
 
 import openconcept
@@ -71,6 +74,47 @@ def test_the_openconcept_clone_has_no_uncommitted_changes():
     )
     dirty = [line for line in status.stdout.splitlines() if line.strip() and not line.startswith("??")]
     assert not dirty, "The OpenConcept clone has uncommitted modifications:\n" + "\n".join(dirty)
+
+
+def test_no_openconcept_module_cdadt_uses_diverges_from_upstream():
+    """A clean working tree is not enough if the clone carries local commits.
+
+    This clone does carry some: three commits to the OpenAeroStruct-backed aerostructural
+    module, for OAS 2.x and NumPy 2 compatibility. cdadt does not import that module, and this
+    test is what keeps that true -- it fails the moment a locally-patched OpenConcept file
+    becomes one cdadt depends on.
+    """
+    root = Path(openconcept.__file__).resolve().parent.parent
+    if not (root / ".git").exists():
+        pytest.skip(f"OpenConcept at {root} is not a git clone; nothing to diff")
+
+    upstream = subprocess.run(
+        ["git", "-C", str(root), "diff", "--name-only", "origin/main...HEAD"],
+        capture_output=True,
+        text=True,
+    )
+    if upstream.returncode != 0:
+        pytest.skip("No origin/main to compare against")
+
+    patched = {
+        line.removeprefix("openconcept/").removesuffix(".py").replace("/", ".")
+        for line in upstream.stdout.splitlines()
+        if line.startswith("openconcept/") and line.endswith(".py")
+    }
+    if not patched:
+        return
+
+    # Import everything, then ask which OpenConcept modules are actually loaded.
+    for module_name, _ in _cdadt_classes():
+        importlib.import_module(module_name)
+    loaded = {name.removeprefix("openconcept.") for name in list(sys.modules) if name.startswith("openconcept.")}
+
+    used_and_patched = sorted(patched & loaded)
+    assert not used_and_patched, (
+        "cdadt depends on OpenConcept modules that this clone has patched locally:\n"
+        + "\n".join(f"  openconcept/{name.replace('.', '/')}.py" for name in used_and_patched)
+        + "\nEither drop the patch or stop depending on the module."
+    )
 
 
 def test_the_mission_comes_from_openconcept_unmodified():
