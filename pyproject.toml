@@ -88,3 +88,14 @@ ignore = [
 
 [tool.coverage.run]
 source = ["cdadt"]
+branch = true
+
+[tool.coverage.report]
+# The package is at 100% statement and branch coverage, and stays there. Every line of cdadt is
+# reachable from a test: there is no physics here to be hard to exercise, only interface,
+# validation and reporting, so anything unreachable is either dead or a missing test.
+# Deliberately no `exclude_lines` beyond coverage's default `# pragma: no cover`, which nothing
+# currently uses -- an exclusion list is how a coverage number stops meaning anything.
+fail_under = 100
+show_missing = true
+skip_covered = true

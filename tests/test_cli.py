@@ -80,3 +80,87 @@ def test_optimize_runs_the_study_and_reports_the_traceability_matrix(tmp_path, c
     assert archived["objective"] == "total_fuel"
     assert {entry["status"] for entry in archived["requirements"]} <= {"MET", "ACTIVE"}
     assert all(entry["regulation"] and entry["source"] for entry in archived["requirements"])
+
+
+@pytest.mark.integration
+def test_the_module_entry_point_runs_the_same_command_line(monkeypatch, capsys):
+    """``python -m cdadt`` must be the same program as the ``cdadt`` console script.
+
+    Executed through :func:`runpy.run_module` rather than a subprocess, so the entry point is
+    genuinely exercised in this interpreter rather than merely observed to exit zero.
+    """
+    import runpy
+    import sys
+
+    monkeypatch.setattr(sys, "argv", ["cdadt", "--version"])
+    with pytest.raises(SystemExit) as exit_status:
+        runpy.run_module("cdadt", run_name="__main__")
+
+    assert exit_status.value.code == 0
+    assert "cdadt" in capsys.readouterr().out
+
+
+def _small_case(tmp_path, name: str, mutate=None):
+    """Write a shipped case to ``tmp_path`` on a coarse grid, optionally mutated."""
+    import yaml
+
+    from tests.conftest import case_dict
+
+    data = case_dict(name)
+    data["black_box"]["num_nodes"] = 5
+    if mutate is not None:
+        mutate(data)
+    path = tmp_path / name
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    return path
+
+
+@pytest.mark.integration
+def test_size_prints_without_being_asked_to_archive(tmp_path, capsys):
+    """``--json`` is optional; the report is the primary output and stands alone."""
+    case = _small_case(tmp_path, "b738.yaml")
+    assert main(["size", str(case)]) == 0
+
+    printed = capsys.readouterr().out
+    assert "performance" in printed
+    assert "takeoff_field_length" in printed
+    assert "Results written to" not in printed
+    assert not list(tmp_path.glob("*.json"))
+
+
+@pytest.mark.integration
+def test_optimize_prints_without_being_asked_to_archive(tmp_path, capsys):
+    """Same for an optimization: the traceability matrix is the output that matters."""
+
+    def shrink(data):
+        data["solver"]["maxiter"] = 60
+        data["optimization"]["driver"] = {"name": "IPOPT", "maxiter": 5, "tol": 1e-4, "derivative_mode": "fwd"}
+        data["optimization"]["design_variables"] = [{"name": "ac|geom|wing|AR", "lower": 9.3, "upper": 9.7}]
+        data["optimization"]["requirements"] = [
+            {
+                "type": "balanced_field_length",
+                "limit": 8000.0,
+                "units": "ft",
+                "regulation": "14 CFR 25.113",
+                "source": "8000 ft dry runway at sea level, ISA",
+            }
+        ]
+
+    case = _small_case(tmp_path, "b738_optimization.yaml", shrink)
+    assert main(["optimize", str(case)]) == 0
+
+    printed = capsys.readouterr().out
+    assert "Certification basis" in printed
+    assert "Results written to" not in printed
+    assert not list(tmp_path.glob("*.json"))
+
+
+@pytest.mark.integration
+def test_inspect_can_show_the_outputs_alone(capsys):
+    """The other half of the interface, and the half a results reader needs."""
+    assert main(["inspect", str(CASES / "b738.yaml"), "--what", "outputs", "--filter", "ac|weights"]) == 0
+    printed = capsys.readouterr().out
+
+    assert "Outputs the box publishes" in printed
+    assert "Inputs the box accepts" not in printed
+    assert "ac|weights|OEW" in printed

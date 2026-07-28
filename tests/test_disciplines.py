@@ -158,3 +158,84 @@ def test_every_discipline_reports_something():
     """A discipline that neither sets nor reports anything would be an empty box in a report."""
     for discipline in (*AIRCRAFT_DISCIPLINES, Performance):
         assert discipline.reported, f"{discipline.discipline_name} reports nothing"
+
+
+@pytest.mark.unit
+def test_a_discipline_behaves_as_a_collection_of_its_parameters():
+    """Membership, iteration and length are how an aircraft walks a discipline."""
+    aero = Aerodynamics()
+    aero.add(Parameter("ac|aero|polar|e", 0.801, None, "estimate"))
+    aero.add(Parameter("ac|aero|Mach_max", 0.82, None, "spec"))
+
+    assert "ac|aero|polar|e" in aero
+    assert "ac|geom|wing|AR" not in aero
+    assert list(iter(aero)) == ["ac|aero|polar|e", "ac|aero|Mach_max"]
+    assert len(aero) == 2
+    assert aero.units("ac|aero|Mach_max") is None
+    assert aero.parameter("ac|aero|polar|e").source == "estimate"
+    assert repr(aero) == "Aerodynamics(name='aerodynamics', parameters=2, responses=2)"
+
+
+@pytest.mark.unit
+def test_collecting_skips_optional_responses_but_raises_on_required_ones():
+    """The distinction is what separates "this box does not publish that" from a wiring error."""
+
+    class Fake:
+        def __init__(self, published):
+            self._published = published
+
+        def get(self, path, units=None):
+            return self._published[path]
+
+        def has(self, path):
+            return path in self._published
+
+    # Propulsion reports only optional responses, so an empty box yields an empty result.
+    propulsion = Propulsion()
+    empty = Fake({})
+    assert propulsion.collect(empty) == {}
+    assert set(propulsion.missing(empty)) == {response.name for response in Propulsion.reported}
+
+    # Aerodynamics reports required ones, so an empty box is an error that names the path.
+    with pytest.raises(KeyError, match="which this black box does not publish"):
+        Aerodynamics().collect(empty)
+
+
+@pytest.mark.unit
+def test_performance_exposes_the_profile_and_grid_it_owns():
+    """A performance discipline detached from its mission could not converge or report it."""
+    from cdadt import MissionProfile, PhaseSchedule
+    from cdadt.mission import STEADY_FLIGHT_PHASES
+
+    profile = MissionProfile(
+        parameters={"mission_range": (2800.0, "nmi")},
+        schedules={phase: PhaseSchedule(250.0, 0.0) for phase in STEADY_FLIGHT_PHASES},
+    )
+    performance = Performance(profile, num_nodes=11)
+    assert performance.profile is profile
+    assert performance.num_nodes == 11
+    assert repr(performance).startswith("Performance(MissionProfile(")
+
+
+@pytest.mark.unit
+def test_applying_performance_writes_the_design_mission():
+    """Performance's ``apply`` is the profile's ``apply``, at the grid it was built for."""
+    from cdadt import MissionProfile, PhaseSchedule
+    from cdadt.mission import STEADY_FLIGHT_PHASES
+
+    written = {}
+
+    class Recording:
+        def set(self, name, value, units=None):
+            written[name] = (value, units)
+
+        def run(self):
+            pass
+
+    profile = MissionProfile(
+        parameters={"mission_range": (2800.0, "nmi")},
+        schedules={phase: PhaseSchedule(250.0, 0.0) for phase in STEADY_FLIGHT_PHASES},
+    )
+    Performance(profile, num_nodes=5).apply(Recording())
+    assert written["mission.mission_range"] == (2800.0, "nmi")
+    assert len(written["mission.cruise.fltcond|Ueas"][0]) == 5

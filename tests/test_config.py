@@ -344,3 +344,103 @@ def test_the_shipped_cases_are_valid_yaml_documents():
     for path in sorted(CASES.glob("*.yaml")):
         with open(path, encoding="utf-8") as handle:
             assert isinstance(yaml.safe_load(handle), dict), path
+
+
+# =============================================================================================
+# Error branches and representations
+# =============================================================================================
+
+
+@pytest.mark.unit
+def test_a_section_that_is_not_a_mapping_says_so():
+    """A YAML list where a mapping was expected fails by name rather than by AttributeError."""
+    with pytest.raises(ConfigError, match="must be a mapping"):
+        Config.from_dict(_case(black_box=["model", "num_nodes"]))
+
+
+@pytest.mark.unit
+def test_design_variables_and_requirements_must_be_lists():
+    """A mapping there is a plausible mistake that would otherwise iterate over its keys."""
+    base = {"objective": {"name": "total_fuel"}}
+    with pytest.raises(ConfigError, match="design_variables' must be a list"):
+        Config.from_dict(_case(optimization={**base, "design_variables": {"name": "ac|geom|wing|AR"}}))
+    with pytest.raises(ConfigError, match="requirements' must be a list"):
+        Config.from_dict(
+            _case(
+                optimization={
+                    **base,
+                    "design_variables": [{"name": "ac|geom|wing|AR", "lower": 7, "upper": 13}],
+                    "requirements": {"type": "balanced_field_length"},
+                }
+            )
+        )
+
+
+@pytest.mark.unit
+def test_a_non_numeric_mission_parameter_is_refused():
+    """Mission values go through the same quantity reader as aircraft parameters."""
+    data = _case()
+    data["mission"]["parameters"] = {"mission_range": {"value": "far", "units": "nmi"}}
+    with pytest.raises(ConfigError, match="must be a number"):
+        Config.from_dict(data)
+
+
+@pytest.mark.unit
+def test_a_file_that_is_not_valid_yaml_is_reported_as_such(tmp_path):
+    """Distinguished from a valid file with wrong contents, which is a different fix."""
+    broken = tmp_path / "broken.yaml"
+    broken.write_text("black_box: {model: x\n  num_nodes: 11\n", encoding="utf-8")
+    with pytest.raises(ConfigError, match="is not valid YAML"):
+        Config.from_yaml(broken)
+
+
+@pytest.mark.unit
+def test_a_file_whose_top_level_is_not_a_mapping_is_refused(tmp_path):
+    """A list of cases is a plausible thing to write, and is not what this reader takes."""
+    listy = tmp_path / "listy.yaml"
+    listy.write_text("- black_box\n- mission\n", encoding="utf-8")
+    with pytest.raises(ConfigError, match="must contain a mapping at the top level"):
+        Config.from_yaml(listy)
+
+
+@pytest.mark.unit
+def test_the_mission_section_exposes_its_path():
+    """The mission subsystem name is configurable, and is what parameter names are prefixed with."""
+    data = _case()
+    data["mission"]["mission_path"] = "trajectory"
+    config = Config.from_dict(data)
+    assert config.mission.mission_path == "trajectory"
+    assert config.mission.parameter_names == ("trajectory.mission_range",)
+
+
+@pytest.mark.unit
+def test_every_configuration_object_reprs_as_what_it_holds(tmp_path):
+    """Reprs are what a debugger frame shows while a case is being diagnosed."""
+    data = _case(
+        solver={"maxiter": 25},
+        optimization={
+            "objective": {"name": "total_fuel", "sense": "minimize"},
+            "design_variables": [{"name": "ac|geom|wing|AR", "lower": 7, "upper": 13}],
+            "requirements": [
+                {
+                    "type": "balanced_field_length",
+                    "limit": 8000,
+                    "regulation": "14 CFR 25.113",
+                    "source": "an 8000 ft runway",
+                }
+            ],
+        },
+    )
+    config = Config.from_dict(data)
+    assert repr(config.black_box) == "BlackBoxConfig('some.module:SomeClass', num_nodes=11)"
+    assert repr(config.solver) == "SolverConfig(maxiter=25)"
+    assert repr(config.mission).startswith("MissionConfig(7 phases")
+    assert repr(config.optimization).startswith("OptimizationConfig(objective='total_fuel'")
+    assert repr(config.optimization.objective) == "ObjectiveSpec('total_fuel', sense='minimize')"
+    assert repr(config.optimization.design_variables[0]).startswith("DesignVariableSpec('ac|geom|wing|AR'")
+    assert repr(config.optimization.requirements[0]).startswith("RequirementSpec('balanced_field_length'")
+    assert repr(config) == "Config(in memory, optimization, 1 parameters)"
+
+    path = tmp_path / "case.yaml"
+    path.write_text(yaml.safe_dump(MINIMAL), encoding="utf-8")
+    assert repr(Config.from_yaml(path)) == f"Config({path}, sizing, 1 parameters)"

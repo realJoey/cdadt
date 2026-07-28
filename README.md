@@ -48,6 +48,7 @@ result, not a preference — see `docs/openconcept.rst`.
 | **Reproducibility** | Three different continuation ladders reach the same aircraft to **1e-7**; reruns are bit-identical |
 | **Environment** | Rebuilt from scratch out of `environment.yml`; 187/187 pass and every number reproduces |
 | **Optimality** | No feasible ±2% perturbation of any design variable improves the objective |
+| **Coverage** | **100%** of statements and branches, enforced, no exclusion list |
 
 Details and the full tables in `docs/verification.rst`.
 
@@ -127,15 +128,21 @@ cdadt optimize cases/b738_optimization.yaml       # ~2 min
 cdadt inspect cases/b738.yaml --what inputs       # what the box accepts
 
 pytest -q -m "not slow"                           # the fast loop
-pytest -q                                         # 187 tests, ~2.7 min
+pytest -q                                         # 246 tests, ~3 min
+pytest -q --cov=cdadt                             # and 100% statement + branch coverage
 pytest -q -m verification                         # grid, derivatives, solver, reproducibility
 pytest -q -m validation                           # reference match + physical checks
 cd docs && make html
 ```
 
-Tests are marked by the class of claim they make — `unit` (94), `contract` (14),
-`integration` (21), `verification` (39), `validation` (19) — so "the suite passes" is a
+Tests are marked by the class of claim they make — `unit` (140), `contract` (14),
+`integration` (34), `verification` (39), `validation` (19) — so "the suite passes" is a
 statement about what has been established, not one undifferentiated green tick.
+
+Coverage is **100% of statements and branches**, enforced by `fail_under = 100`, with no
+exclusion list. That is a fair target here only because cdadt computes no physics: everything in
+it is interface, routing, validation and reporting, so an unreachable line is dead code or a
+missing test.
 
 ## Layout
 

@@ -160,3 +160,116 @@ def test_the_shipped_optimization_converges_and_meets_every_requirement(optimiza
     # And it must still be flying the mission it was asked to fly.
     assert outcome.optimum["mission_range_flown"] == pytest.approx(2800.0, rel=1e-6)
     assert outcome.optimum["takeoff_field_length"] == pytest.approx(outcome.optimum["abort_distance"], rel=1e-6)
+
+
+# =============================================================================================
+# Drivers, outcomes and reporting
+# =============================================================================================
+
+
+@pytest.mark.integration
+def test_slsqp_is_the_default_driver_and_is_usable_on_a_narrow_study(optimization_config):
+    """SciPy's SLSQP is always installed, and is the code's default for that reason.
+
+    Exercised over a deliberately narrow interval, because the reason the shipped case uses
+    IPOPT is that SLSQP cannot recover from a design the Newton solver fails to converge. Over a
+    small interval no such design is proposed.
+    """
+    case = _as_dict(optimization_config)
+    case["black_box"]["num_nodes"] = 5
+    case["solver"]["maxiter"] = 60
+    case["optimization"] = {
+        "driver": {"name": "SLSQP", "maxiter": 3, "tol": 1e-4, "derivative_mode": "fwd"},
+        "objective": {"name": "total_fuel", "units": "kg", "ref": 2.0e4},
+        "design_variables": [{"name": "ac|geom|wing|AR", "lower": 9.3, "upper": 9.7}],
+        "requirements": [],
+    }
+    optimizer = Optimizer(SizingAnalysis(Config.from_dict(case)))
+    outcome = optimizer.run()
+
+    assert float(outcome.optimum["total_fuel"]) <= float(outcome.baseline["total_fuel"])
+    assert len(optimizer.basis) == 0
+    assert "balanced_field_length" in optimizer.requirements
+
+
+@pytest.mark.integration
+def test_pyoptsparse_settings_are_supplied_per_optimizer_and_can_be_overridden(optimization_config):
+    """cdadt supplies defaults for IPOPT and SNOPT; the case file's own options win."""
+    case = _as_dict(optimization_config)
+    case["black_box"]["num_nodes"] = 5
+    case["optimization"]["design_variables"] = [{"name": "ac|geom|wing|AR", "lower": 9.0, "upper": 10.0}]
+    case["optimization"]["requirements"] = []
+
+    case["optimization"]["driver"] = {"name": "SNOPT", "maxiter": 17, "tol": 1e-5}
+    snopt = Optimizer(SizingAnalysis(Config.from_dict(case)))._pyoptsparse_settings()
+    assert snopt["Major iterations limit"] == 17
+    assert snopt["Major optimality tolerance"] == 1e-5
+
+    case["optimization"]["driver"] = {
+        "name": "IPOPT",
+        "maxiter": 12,
+        "options": {"print_level": 5, "mu_strategy": "monotone"},
+    }
+    ipopt = Optimizer(SizingAnalysis(Config.from_dict(case)))._pyoptsparse_settings()
+    assert ipopt["max_iter"] == 12
+    assert ipopt["hessian_approximation"] == "limited-memory"
+    assert ipopt["print_level"] == 5, "the case file's own option must win over cdadt's default"
+    assert ipopt["mu_strategy"] == "monotone"
+
+
+@pytest.mark.integration
+def test_the_report_says_plainly_when_a_study_did_not_succeed(optimization_config):
+    """Both failure modes must read as failures: a violated requirement, and a failed driver.
+
+    Built from a real converged optimizer, so the report has a built box to read design
+    variables from, then handed outcomes that did not succeed. A report printing "SUCCEEDED"
+    over a violated basis would be wrong exactly where a reader looks.
+    """
+    from cdadt.optimization import OptimizationOutcome
+
+    optimizer = Optimizer(SizingAnalysis(_small(optimization_config)))
+    outcome = optimizer.run()
+    assert "SUCCEEDED" in optimizer.report(outcome)
+
+    # Re-evaluate the same basis against an impossible limit, so every requirement is violated.
+    for requirement in optimizer.basis:
+        requirement._limit = -1.0
+    violated = optimizer.basis.evaluate(optimizer.analysis.box, optimizer.analysis.catalog)
+    assert violated and not any(result.satisfied for result in violated)
+
+    basis_failed = OptimizationOutcome(
+        outcome.baseline, outcome.optimum, violated, outcome.objective, outcome.sense, failed=False
+    )
+    assert not basis_failed.succeeded
+    assert "DID NOT SUCCEED: violated" in optimizer.report(basis_failed)
+
+    # And a driver that reported failure with every requirement satisfied.
+    driver_failed = OptimizationOutcome(
+        outcome.baseline, outcome.optimum, [], outcome.objective, outcome.sense, failed=True
+    )
+    assert not driver_failed.succeeded
+    assert "DID NOT SUCCEED: the driver reported failure" in optimizer.report(driver_failed)
+
+
+@pytest.mark.integration
+def test_the_outcome_and_optimizer_repr_as_what_they_describe(optimization_config):
+    """Both are what a debugger frame shows while a study is being diagnosed."""
+    optimizer = Optimizer(SizingAnalysis(_small(optimization_config)))
+    outcome = optimizer.run()
+
+    assert repr(optimizer).startswith("Optimizer(objective='total_fuel'")
+    assert repr(outcome) == "OptimizationOutcome('total_fuel', succeeded=True)"
+    assert all(result.active for result in outcome.active)
+    assert not outcome.violated
+
+
+@pytest.mark.integration
+def test_an_optimizer_that_is_not_pyoptsparse_supplies_no_pyoptsparse_settings(optimization_config):
+    """SLSQP is a SciPy driver; there are no pyOptSparse options to hand it."""
+    case = _as_dict(optimization_config)
+    case["black_box"]["num_nodes"] = 5
+    case["optimization"]["driver"] = {"name": "SLSQP", "maxiter": 5}
+    case["optimization"]["design_variables"] = [{"name": "ac|geom|wing|AR", "lower": 9.0, "upper": 10.0}]
+    case["optimization"]["requirements"] = []
+
+    assert Optimizer(SizingAnalysis(Config.from_dict(case)))._pyoptsparse_settings() == {}

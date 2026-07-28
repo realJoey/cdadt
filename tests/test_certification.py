@@ -207,3 +207,102 @@ def test_the_shipped_basis_is_satisfied_by_the_baseline_aircraft(built_box, opti
     basis = CertificationBasis.from_specs(optimization_config.optimization.requirements)
     violated = [result.requirement.name for result in basis.evaluate(built_box, CATALOG) if not result.satisfied]
     assert not violated, f"The baseline B738 violates {violated}"
+
+
+# =============================================================================================
+# The generic response limit
+# =============================================================================================
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("sense", ["upper", "lower"])
+def test_a_response_limit_constrains_whatever_it_is_pointed_at(sense):
+    """The escape hatch: a limit on any reported response, with the sense stated in the case."""
+    requirement = ResponseLimit(
+        limit=20000.0,
+        regulation="design",
+        source="Usable fuel volume of the wing box",
+        units="kg",
+        options={"response": "total_fuel", "sense": sense},
+    )
+    assert requirement.sense == sense
+    assert requirement.name == "response_limit_total_fuel"
+    assert requirement.response_name() == "total_fuel"
+    assert requirement.path(CATALOG) == "mission.loiter.fuel_burn_integ.fuel_burn_final"
+    assert "total_fuel" in requirement.title
+    assert ("at most" if sense == "upper" else "at least") in requirement.title
+
+    result = requirement.evaluate(FakeBox({requirement.path(CATALOG): 18597.3}), CATALOG)
+    assert result.satisfied is (sense == "upper")
+
+
+@pytest.mark.unit
+def test_a_requirement_with_an_impossible_sense_is_refused():
+    """``sense`` decides which way every margin runs; a third value would silently mean one."""
+    with pytest.raises(RequirementError, match="must be 'upper' or 'lower'"):
+        ResponseLimit(
+            limit=1.0,
+            regulation="design",
+            source="a reason",
+            options={"response": "total_fuel", "sense": "sideways"},
+        )
+
+
+# =============================================================================================
+# The catalogue
+# =============================================================================================
+
+
+@pytest.mark.unit
+def test_a_catalog_refuses_a_class_that_cannot_be_named():
+    """A requirement with no ``kind`` could never appear in a case file."""
+
+    class Anonymous(Requirement):
+        response = "MTOW"
+
+    with pytest.raises(RequirementError, match="declares no 'kind'"):
+        RequirementCatalog([Anonymous])
+
+
+@pytest.mark.unit
+def test_a_catalog_resolves_a_kind_to_its_class_and_lists_what_it_has():
+    """The lookup a case file's ``type`` goes through."""
+    catalog = RequirementCatalog()
+    assert catalog.requirement_class("balanced_field_length") is BalancedFieldLength
+    assert len(catalog) == 6
+    with pytest.raises(RequirementError, match="Available:"):
+        catalog.requirement_class("no_such_requirement")
+    assert repr(catalog) == "RequirementCatalog(6 types)"
+
+
+# =============================================================================================
+# Representations and accessors
+# =============================================================================================
+
+
+@pytest.mark.unit
+def test_requirements_and_results_repr_as_what_they_assert():
+    """Both end up in debugger frames while a certification argument is being checked."""
+    requirement = _field_length()
+    assert repr(requirement) == "BalancedFieldLength(upper 8000.0, '14 CFR 25.113')"
+
+    result = requirement.evaluate(FakeBox({requirement.path(CATALOG): 6000.0}), CATALOG)
+    assert repr(result) == "RequirementResult('balanced_field_length', 6000.0000, MET)"
+
+
+@pytest.mark.unit
+def test_a_requirement_exposes_the_options_it_was_given():
+    """A report that could not name which phase a throttle limit applied to would be ambiguous."""
+    throttle = ThrottleLimit(1.0, "design", "engine deck", options={"phase": "climb"})
+    assert throttle.options == {"phase": "climb"}
+    assert throttle.phase == "climb"
+
+
+@pytest.mark.unit
+def test_a_basis_exposes_its_requirements_and_reprs_as_their_count():
+    """The basis is iterated when constraints are registered and when a report is written."""
+    basis = CertificationBasis([_field_length()])
+    assert len(basis) == 1
+    assert basis.requirements[0].regulation == "14 CFR 25.113"
+    assert [r.name for r in basis] == ["balanced_field_length"]
+    assert repr(basis) == "CertificationBasis(1 requirements)"

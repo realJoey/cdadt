@@ -259,13 +259,13 @@ statement about what has actually been established:
      - Count
      - Claim
    * - ``unit``
-     - 94
+     - 140
      - One cdadt class behaves as specified, with no model built
    * - ``contract``
      - 14
      - The cdadt/OpenConcept boundary and the ownership map hold
    * - ``integration``
-     - 21
+     - 34
      - A real OpenConcept model builds, converges and is driven
    * - ``verification``
      - 41
@@ -274,8 +274,34 @@ statement about what has actually been established:
      - 19
      - The right equations were solved: against the reference example, and against physical reality
    * - **total**
-     - **187**
-     - ~2.7 minutes; ``-m "not slow"`` runs the fast loop
+     - **246**
+     - ~3 minutes; ``-m "not slow"`` runs the fast loop
+
+Coverage
+--------
+
+**100% of statements and 100% of branches**, enforced rather than reported: ``fail_under = 100``
+in ``pyproject.toml`` means a run with ``--cov`` fails if a single line or branch of cdadt goes
+unexercised.
+
+.. code-block:: bash
+
+   pytest -q --cov=cdadt
+
+That is a defensible target here specifically because cdadt computes no physics. There is no
+solver to drive into an exotic state and no correlation valid only over some range -- only
+interface, validation, routing and reporting, all of which are reachable from a test. A line
+that cannot be reached is therefore either dead code or a missing test, and both are worth
+finding.
+
+There is deliberately **no** ``exclude_lines`` list beyond coverage's default
+``# pragma: no cover``, which nothing in the package currently uses. An exclusion list is how a
+coverage number quietly stops meaning anything.
+
+Turning branch coverage on was itself worth it: statement coverage reached 100% while four
+branches were still unexercised -- three ``--json``-less paths through the command line and the
+non-pyOptSparse path through the driver settings. Each is now covered by a test that says what
+it is checking.
 
 .. code-block:: bash
 

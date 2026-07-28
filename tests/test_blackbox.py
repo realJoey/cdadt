@@ -121,3 +121,62 @@ def test_solver_settings_default_to_the_reference_run_scripts_own():
     settings = SolverSettings()
     assert (settings.maxiter, settings.atol, settings.rtol) == (20, 1e-9, 1e-9)
     assert settings.err_on_non_converge is True
+
+
+# =============================================================================================
+# Representations, accessors and error paths
+# =============================================================================================
+
+
+@pytest.mark.unit
+def test_solver_settings_and_variable_info_repr_as_what_they_hold():
+    """Both appear in debugger frames and in the interface listing."""
+    from cdadt.blackbox import VariableInfo
+
+    assert repr(SolverSettings(maxiter=25, atol=1e-8, rtol=1e-8)) == (
+        "SolverSettings(maxiter=25, atol=1e-08, rtol=1e-08)"
+    )
+    info = VariableInfo("ac|geom|wing|S_ref", "m**2", (1,), "output")
+    assert info.name == "ac|geom|wing|S_ref"
+    assert info.kind == "output"
+    assert info.is_scalar
+    assert not VariableInfo("mission.climb.throttle", None, (11,), "output").is_scalar
+    assert repr(info) == "VariableInfo('ac|geom|wing|S_ref', units='m**2', shape=(1,))"
+
+
+@pytest.mark.unit
+def test_an_unbuilt_box_reprs_as_unbuilt_and_publishes_nothing():
+    """``has`` must answer, not raise, before the model exists -- it is a question about it."""
+    box = OpenConceptSizingBox(MODEL, num_nodes=5)
+    assert box.model_class.__name__ == "B738SizingMissionAnalysis"
+    assert box.solver.maxiter == 20
+    assert not box.has("ac|weights|MTOW")
+    assert repr(box) == f"OpenConceptSizingBox({MODEL!r}, num_nodes=5, not built)"
+
+
+@pytest.mark.integration
+def test_a_built_box_reprs_as_built_and_exposes_its_model():
+    """The group instance is what design variables are declared on before setup."""
+    box = OpenConceptSizingBox.describe(MODEL)
+    assert repr(box) == f"OpenConceptSizingBox({MODEL!r}, num_nodes=3, built)"
+    assert box.model is box.problem.model
+    assert box.model.__class__.__name__ == "B738SizingMissionAnalysis"
+
+
+@pytest.mark.integration
+def test_setting_a_variable_the_box_does_not_have_names_the_box():
+    """So the reader knows which model refused it, not merely that a key was missing."""
+    box = OpenConceptSizingBox.describe(MODEL)
+    with pytest.raises(BlackBoxError, match="Cannot set"):
+        box.set("ac|geom|wing|thickness_distribution", 0.12)
+
+
+@pytest.mark.integration
+def test_a_driver_can_be_attached_when_the_box_is_built():
+    """The optimizer attaches one after build; this is the path that takes it at build time."""
+    import openmdao.api as om
+
+    box = OpenConceptSizingBox(MODEL, num_nodes=3, solver=SolverSettings(maxiter=0, err_on_non_converge=False))
+    driver = om.ScipyOptimizeDriver(optimizer="SLSQP", maxiter=1)
+    box.build(driver=driver)
+    assert box.problem.driver is driver

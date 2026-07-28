@@ -74,3 +74,46 @@ def test_responses_compare_on_what_they_mean():
     three = Response("total_fuel", "mission.descent.fuel_burn_integ.fuel_burn_final", "kg")
     assert one == two
     assert one != three
+
+
+@pytest.mark.unit
+def test_parameters_compare_and_hash_on_everything_that_identifies_them():
+    """Two parameters are the same parameter only if all four fields agree.
+
+    Hashability matters because parameters end up in sets and dict keys while an aircraft is
+    being assembled; a hash inconsistent with equality would silently lose one of a pair.
+    """
+    one = Parameter("ac|geom|wing|AR", 9.45, None, "specs")
+    same = Parameter("ac|geom|wing|AR", 9.45, None, "specs")
+    other_value = Parameter("ac|geom|wing|AR", 11.0, None, "specs")
+    other_source = Parameter("ac|geom|wing|AR", 9.45, None, "a guess")
+
+    assert one == same and hash(one) == hash(same)
+    assert one != other_value
+    assert one != other_source
+    assert one != "ac|geom|wing|AR"  # NotImplemented, so Python falls back to identity
+    assert len({one, same, other_value}) == 2
+
+
+@pytest.mark.unit
+def test_a_parameter_reprs_as_its_name_value_and_units():
+    """Reprs end up in error messages and debugger frames; they must identify the object."""
+    assert repr(Parameter("ac|geom|wing|S_ref", 124.6, "m**2")) == "Parameter('ac|geom|wing|S_ref', 124.6, 'm**2')"
+
+
+@pytest.mark.unit
+def test_a_response_carries_its_description_and_reprs_usefully():
+    """The description is what a generated interface table prints."""
+    response = Response("total_fuel", "mission.loiter.fuel", "kg", "block plus reserves")
+    assert response.description == "block plus reserves"
+    assert repr(response) == "Response('total_fuel', 'mission.loiter.fuel', 'kg')"
+
+
+@pytest.mark.unit
+def test_responses_hash_consistently_with_equality():
+    """The response catalogue compares responses to detect two disciplines claiming one name."""
+    one = Response("total_fuel", "a.path", "kg")
+    same = Response("total_fuel", "a.path", "kg", "different words")
+    assert one == same and hash(one) == hash(same)
+    assert one != "total_fuel"
+    assert one != Response("total_fuel", "a.path", "lb")

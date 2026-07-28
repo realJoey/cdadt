@@ -147,3 +147,47 @@ def test_the_structural_breakdown_is_a_breakdown_of_the_structural_total(converg
     assert total < results["structure_weight"] < 2.0 * total
     # And structure is the dominant part of the empty weight it is reported alongside.
     assert 0.3 < results["structure_weight"] / results["OEW"] < 0.9
+
+
+@pytest.mark.unit
+def test_the_catalog_names_what_is_available_when_asked_for_something_that_is_not():
+    """A bare KeyError on a response name would not tell a reader what to write instead."""
+    catalog = ResponseCatalog()
+    with pytest.raises(KeyError, match="Available:"):
+        catalog.response("specific_air_range")
+
+
+@pytest.mark.unit
+def test_the_catalog_and_results_repr_as_their_size():
+    """Both appear in debugger frames while a run is being inspected."""
+    assert repr(ResponseCatalog()).startswith("ResponseCatalog(")
+    results = SizingResults({"weights": {"MTOW": 1.0}}, model="a:Box", num_nodes=3)
+    assert repr(results) == "SizingResults(1 disciplines, 1 responses)"
+
+
+@pytest.mark.unit
+def test_results_expose_the_run_they_came_from():
+    """A results object detached from its model and grid cannot be compared to another."""
+    results = SizingResults({"weights": {"MTOW": 1.0}}, model="a:Box", num_nodes=21)
+    assert results.model == "a:Box"
+    assert results.num_nodes == 21
+    assert list(iter(results)) == ["MTOW"]
+
+
+@pytest.mark.unit
+def test_the_report_skips_empty_disciplines_and_names_what_was_unavailable():
+    """A discipline with nothing to say prints nothing; an unavailable response is stated.
+
+    Silently omitting a response the box did not publish would read as a discipline that found
+    nothing to report, which is a different claim entirely.
+    """
+    results = SizingResults(
+        {"weights": {"MTOW": 78345.6}, "structures": {}},
+        missing={"structures": ("wing_weight", "fuselage_weight")},
+        model="a:Box",
+        num_nodes=3,
+    )
+    report = results.report()
+    assert "MTOW" in report
+    assert "Not published by this black box" in report
+    assert "structures: wing_weight, fuselage_weight" in report
