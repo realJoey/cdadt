@@ -246,6 +246,32 @@ class OpenConceptSizingBox:
             raise BlackBoxError(f"'{spec}' names a {type(candidate).__name__}, not a class.")
         return candidate
 
+    @classmethod
+    def describe(cls, model: str, num_nodes: int = 3) -> OpenConceptSizingBox:
+        """Return a cheaply built box, for reading the interface without running anything.
+
+        Building on the smallest legal grid and with the solver disabled costs a fraction of a
+        real setup, and the *names* a box publishes do not depend on the grid -- only their
+        shapes do. That is what makes it possible to tell a user their design variable is
+        misspelled, with suggestions, before a long optimization starts rather than as an
+        OpenMDAO error thrown out of ``setup``.
+
+        Parameters
+        ----------
+        model : str
+            The analysis to load, as ``"module.path:ClassName"``.
+        num_nodes : int, optional
+            Grid to build on. Default 3, the smallest odd grid.
+
+        Returns
+        -------
+        OpenConceptSizingBox
+            Built, never converged. Its numbers are meaningless; its interface is not.
+        """
+        box = cls(model, num_nodes, SolverSettings(maxiter=0, iprint=-1, err_on_non_converge=False))
+        box.build()
+        return box
+
     @property
     def model_spec(self) -> str:
         """The ``module:Class`` string the box was loaded from."""

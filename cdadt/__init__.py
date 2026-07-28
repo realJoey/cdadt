@@ -14,6 +14,18 @@ that is flown, the certification basis that must hold, and the optimizer that dr
 from cdadt.aircraft import Aircraft, AircraftError
 from cdadt.analysis import SizingAnalysis
 from cdadt.blackbox import BlackBoxError, OpenConceptSizingBox, SolverSettings, VariableInfo
+from cdadt.certification import (
+    BalancedFieldLength,
+    CertificationBasis,
+    DesignRange,
+    EngineOutClimbGradient,
+    MaximumTakeoffWeight,
+    Requirement,
+    RequirementError,
+    RequirementResult,
+    ResponseLimit,
+    ThrottleLimit,
+)
 from cdadt.config import (
     BlackBoxConfig,
     Config,
@@ -38,6 +50,7 @@ from cdadt.disciplines import (
     Weights,
 )
 from cdadt.mission import ContinuationStep, MissionProfile, PhaseSchedule
+from cdadt.optimization import OptimizationError, OptimizationOutcome, Optimizer
 from cdadt.parameters import Parameter, Response
 from cdadt.results import ResponseCatalog, SizingResults
 
@@ -48,33 +61,46 @@ __all__ = [
     "Aerodynamics",
     "Aircraft",
     "AircraftError",
+    "BalancedFieldLength",
     "BlackBoxConfig",
     "BlackBoxError",
+    "CertificationBasis",
     "Config",
     "ConfigError",
     "ContinuationStep",
+    "DesignRange",
     "DesignVariableSpec",
     "Discipline",
     "DisciplineError",
+    "EngineOutClimbGradient",
     "Geometry",
+    "MaximumTakeoffWeight",
     "MissionConfig",
     "MissionProfile",
     "ObjectiveSpec",
     "OpenConceptSizingBox",
     "OptimizationConfig",
+    "OptimizationError",
+    "OptimizationOutcome",
+    "Optimizer",
     "Parameter",
     "Performance",
     "PhaseSchedule",
     "Propulsion",
+    "Requirement",
+    "RequirementError",
+    "RequirementResult",
     "RequirementSpec",
     "Response",
     "ResponseCatalog",
+    "ResponseLimit",
     "SizingAnalysis",
     "SizingResults",
     "SolverConfig",
     "SolverSettings",
     "Stability",
     "Structures",
+    "ThrottleLimit",
     "VariableInfo",
     "Weights",
     "__version__",
