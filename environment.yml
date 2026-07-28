@@ -163,7 +163,6 @@ dependencies:
       - baron==0.10.1
       - cdadt==0.1.0
       - latexcodec==3.0.1
-      - openaerostruct==2.7.1
       - openconcept==1.2.6
       - pybtex==0.26.1
       - pybtex-docutils==1.0.3
