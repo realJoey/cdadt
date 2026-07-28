@@ -218,6 +218,33 @@ declared units are *applied* on the way out rather than merely recorded.
 
 Tested by :mod:`tests.test_verification_consistency`.
 
+The environment reproduces from the file that describes it
+------------------------------------------------------------
+
+An environment that works is not the same as a recipe that rebuilds it, and the difference is
+only visible if someone rebuilds. So the environment was built from scratch, on a clean name,
+from ``environment.yml`` alone, and the whole suite was run in it.
+
+It failed twice before it passed, and both failures were defects in the recipe rather than in
+the code:
+
+*The editable installs were recorded as PyPI pins.* ``conda env export`` had written
+``cdadt==0.2.0`` and ``openconcept==1.2.6`` into the pip section. A build from that file would
+have fetched a cdadt that does not exist on PyPI and a *different* OpenConcept than the local
+clone the results depend on.
+
+*The BLAS variant selector had been stripped.* ``--no-builds`` reduces ``libblas`` to a bare
+version, and conda then resolved the MKL-backed build. The environment built cleanly, imported
+NumPy cleanly, and aborted the interpreter with ``0xc06d007f`` inside ``numpy.linalg.solve`` the
+moment OpenConcept was imported -- exactly the failure :doc:`install` warns about, reintroduced
+by the file meant to prevent it. Note the failure mode: the interpreter dies, so ``pytest``
+terminates mid-collection with a fatal exception instead of reporting a failed test.
+
+With both fixed, a from-scratch environment runs **187 of 187 tests** and reproduces every
+documented number to all printed digits -- MTOW 78345.6435 kg, fuel with reserves 18597.3177 kg,
+balanced field length 5247.7948 ft. The verification environment was then removed; the recipe,
+not the environment, is the artefact.
+
 What the suite establishes, by claim class
 -------------------------------------------
 
@@ -235,20 +262,20 @@ statement about what has actually been established:
      - 94
      - One cdadt class behaves as specified, with no model built
    * - ``contract``
-     - 11
+     - 14
      - The cdadt/OpenConcept boundary and the ownership map hold
    * - ``integration``
      - 21
      - A real OpenConcept model builds, converges and is driven
    * - ``verification``
-     - 39
+     - 41
      - The equations are solved right: grid, solver, derivatives, reproducibility, optimality, consistency
    * - ``validation``
      - 19
      - The right equations were solved: against the reference example, and against physical reality
    * - **total**
-     - **184**
-     - ~3.5 minutes; ``-m "not slow"`` runs the fast loop
+     - **187**
+     - ~2.7 minutes; ``-m "not slow"`` runs the fast loop
 
 .. code-block:: bash
 

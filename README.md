@@ -46,6 +46,7 @@ result, not a preference — see `docs/openconcept.rst`.
 | **Total derivatives** | Agree with finite differences to **8.9e-5**, with the textbook truncation/round-off minimum at step 1e-6 |
 | **Solver floor** | Measured at **1e-9**, grid-independent — which is why 1e-9 is requested and 1e-10 is not reachable |
 | **Reproducibility** | Three different continuation ladders reach the same aircraft to **1e-7**; reruns are bit-identical |
+| **Environment** | Rebuilt from scratch out of `environment.yml`; 187/187 pass and every number reproduces |
 | **Optimality** | No feasible ±2% perturbation of any design variable improves the objective |
 
 Details and the full tables in `docs/verification.rst`.
@@ -99,7 +100,7 @@ and, at least as prominently, what has not — including that §25.121(b) is eva
 than in the takeoff configuration the regulation specifies, that there is no V<sub>MC</sub>, no
 approach speed and no CG model, and which OpenConcept commit these numbers correspond to.
 
-Nothing in this repository modifies OpenConcept, and nothing is ever pushed to it. The installed
+The installed clone is exactly upstream `mdolab/openconcept`. Nothing in this repository modifies OpenConcept, and nothing is ever pushed to it. The installed
 clone is checked for uncommitted changes by the test suite, and any commit it carries that
 upstream does not is checked against the modules cdadt actually loads.
 
@@ -126,13 +127,13 @@ cdadt optimize cases/b738_optimization.yaml       # ~2 min
 cdadt inspect cases/b738.yaml --what inputs       # what the box accepts
 
 pytest -q -m "not slow"                           # the fast loop
-pytest -q                                         # 184 tests, ~3.5 min
+pytest -q                                         # 187 tests, ~2.7 min
 pytest -q -m verification                         # grid, derivatives, solver, reproducibility
 pytest -q -m validation                           # reference match + physical checks
 cd docs && make html
 ```
 
-Tests are marked by the class of claim they make — `unit` (94), `contract` (11),
+Tests are marked by the class of claim they make — `unit` (94), `contract` (14),
 `integration` (21), `verification` (39), `validation` (19) — so "the suite passes" is a
 statement about what has been established, not one undifferentiated green tick.
 
