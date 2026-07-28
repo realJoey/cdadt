@@ -186,3 +186,170 @@ ac:
   cabin_pressure:
     value: 8.95
     units: psi
+
+# ==============================================================================
+# Mission
+# ==============================================================================
+# The mission is part of the case, not part of the code. Values match the profile
+# OpenConcept's B738_sizing example flies, so cdadt results are comparable to that
+# reference. Schedules give two endpoints and are interpolated across the analysis nodes,
+# which keeps the profile independent of node count.
+mission:
+  # Nested to match the pipe-separated names OpenConcept uses: "takeoff|h" is
+  # mission -> takeoff -> h.
+  takeoff:
+    h:
+      value: 0.0
+      units: ft
+  cruise:
+    h0:
+      value: 35000.0
+      units: ft
+  reserve:
+    h0:
+      value: 15000.0
+      units: ft
+  loiter:
+    h0:
+      value: 1500.0
+      units: ft
+  mission_range:
+    value: 2800.0
+    units: nmi
+  payload:
+    value: 18000.0
+    units: kg
+  reserve_range:
+    value: 200.0
+    units: nmi
+  loiter_duration:
+    value: 1800.0
+    units: s
+
+  # Seed for the ground-roll true-airspeed vectors. These integrate acceleration from a
+  # standstill and their solver is sensitive to the starting point.
+  takeoff_speed_guess:
+    value: 100.0
+    units: kn
+
+  schedule:
+    climb:
+      Ueas:
+        value: [230.0, 252.0]
+        units: kn
+      vs:
+        value: [2300.0, 400.0]
+        units: ft/min
+    cruise:
+      Ueas:
+        value: [252.0, 252.0]
+        units: kn
+      vs:
+        value: [0.0, 0.0]
+        units: ft/min
+    descent:
+      Ueas:
+        value: [252.0, 250.0]
+        units: kn
+      vs:
+        value: [-1300.0, -800.0]
+        units: ft/min
+    reserve_climb:
+      Ueas:
+        value: [230.0, 230.0]
+        units: kn
+      vs:
+        value: [3000.0, 2300.0]
+        units: ft/min
+    reserve_cruise:
+      Ueas:
+        value: [250.0, 250.0]
+        units: kn
+      vs:
+        value: [0.0, 0.0]
+        units: ft/min
+    reserve_descent:
+      Ueas:
+        value: [250.0, 250.0]
+        units: kn
+      vs:
+        value: [-800.0, -800.0]
+        units: ft/min
+    loiter:
+      Ueas:
+        value: [250.0, 250.0]
+        units: kn
+      vs:
+        value: [0.0, 0.0]
+        units: ft/min
+
+  # Continuation schedule. The mission is a coupled implicit system -- phase durations,
+  # throttle and V1 are all solved -- and a Newton solver started at the design mission
+  # does not converge. Each step is run in sorted key order, so the solver enters the next
+  # from a converged neighbour. This mirrors the ramp OpenConcept's own B738_sizing example
+  # performs at lines 472-490, made explicit so it can be inspected and tested.
+  continuation:
+    # Short range at low altitude, with a gentle constant descent. The steep initial
+    # descent of the design profile is what the solver has most trouble with, so it is
+    # introduced last.
+    step_0_short_range_low_altitude:
+      mission_range:
+        value: 500.0
+        units: nmi
+      cruise:
+        h0:
+          value: 5000.0
+          units: ft
+      reserve:
+        h0:
+          value: 1000.0
+          units: ft
+      reserve_range:
+        value: 100.0
+        units: nmi
+      schedule:
+        descent:
+          Ueas:
+            value: [252.0, 250.0]
+            units: kn
+          vs:
+            value: [-800.0, -800.0]
+            units: ft/min
+
+    # Design range and altitudes, still with the gentle descent.
+    step_1_design_range_gentle_descent:
+      mission_range:
+        value: 2800.0
+        units: nmi
+      cruise:
+        h0:
+          value: 35000.0
+          units: ft
+      reserve:
+        h0:
+          value: 15000.0
+          units: ft
+      reserve_range:
+        value: 200.0
+        units: nmi
+      schedule:
+        descent:
+          Ueas:
+            value: [252.0, 250.0]
+            units: kn
+          vs:
+            value: [-800.0, -800.0]
+            units: ft/min
+
+# ==============================================================================
+# Solver
+# ==============================================================================
+# Numerical settings for the sizing loop. Configured rather than built in: tolerances
+# decide when a result is called converged, so they belong with the case that reports it.
+solver:
+  maxiter:
+    value: 20
+  atol:
+    value: 1.0e-9
+  rtol:
+    value: 1.0e-9

@@ -12,6 +12,10 @@
 :mod:`cdadt.mission.blackbox`
     :class:`~cdadt.mission.blackbox.MissionBlackBox`, the only class in cdadt that imports
     from ``openconcept.mission``.
+
+:mod:`cdadt.mission.sizing`
+    :class:`~cdadt.mission.sizing.SizingLoop`, which assembles the aircraft-scoped
+    disciplines, the mission, and the weight closure into one converged problem.
 """
 
 from cdadt.mission.aircraft_model import AircraftModelFactory, CdadtAircraftModel
@@ -26,6 +30,7 @@ from cdadt.mission.contract import (
     PhaseSpec,
     phase_supplied_inputs,
 )
+from cdadt.mission.sizing import SizingLoop
 
 __all__ = [
     "AIRCRAFT_MODEL_OUTPUTS",
@@ -41,5 +46,6 @@ __all__ = [
     "PhaseKind",
     "PhaseSchedule",
     "PhaseSpec",
+    "SizingLoop",
     "phase_supplied_inputs",
 ]

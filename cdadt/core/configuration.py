@@ -462,4 +462,13 @@ def _walk_leaves(node: Any, prefix: tuple[str, ...]) -> Iterator[str]:
         raise ConfigurationError(f"'{SEPARATOR.join(prefix)}' is an empty branch with no configured values")
 
     for key, child in node.items():
+        # A key containing the separator would produce a name that cannot be looked up
+        # again: the name is split on the separator to walk back down the tree, so
+        # {"takeoff|h": ...} yields "takeoff|h" but resolves as takeoff -> h. Nest instead.
+        if SEPARATOR in str(key):
+            raise ConfigurationError(
+                f"Configuration key '{key}' under '{SEPARATOR.join(prefix) or '<root>'}' contains the "
+                f"path separator '{SEPARATOR}'. Nest the levels instead, so that '{key}' becomes "
+                f"{' -> '.join(str(key).split(SEPARATOR))}."
+            )
         yield from _walk_leaves(child, (*prefix, str(key)))

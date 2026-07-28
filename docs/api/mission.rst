@@ -29,3 +29,21 @@ The black box
    :members:
    :undoc-members:
    :show-inheritance:
+
+The sizing loop
+---------------
+
+.. automodule:: cdadt.mission.sizing
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Assembled aircraft
+------------------
+
+.. automodule:: cdadt.aircraft
+   :no-members:
+
+.. automodule:: cdadt.aircraft.jet_transport
+   :members:
+   :show-inheritance:

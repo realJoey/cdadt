@@ -168,6 +168,125 @@ class MissionProfile:
     continuation: Sequence[ContinuationStep] = ()
     takeoff_speed_guess: tuple[float, str] = (100.0, "kn")
 
+    @classmethod
+    def from_config(cls, config, root: str = "mission") -> MissionProfile:
+        """Build a mission profile from a configuration tree.
+
+        The mission is part of the case, not part of the code, so it is configured
+        alongside the airframe rather than written into a run script. The expected layout,
+        rooted at ``root``:
+
+        .. code-block:: yaml
+
+           mission:
+             mission_range: {value: 2800, units: nmi}      # every MISSION_PROFILE_INPUTS name
+             cruise|h0: {value: 35000, units: ft}
+             ...
+             schedule:
+               climb:
+                 Ueas: {value: [230, 252], units: kn}      # 2 endpoints or num_nodes values
+                 vs:   {value: [2300, 400], units: ft/min}
+               ...
+             takeoff_speed_guess: {value: 100, units: kn}
+             continuation:
+               step_0:                                     # applied in sorted key order
+                 description_only_in_the_key: ...
+                 mission_range: {value: 500, units: nmi}
+
+        Parameters
+        ----------
+        config : AircraftConfiguration
+            Configuration containing the mission definition.
+        root : str, optional
+            Path prefix the mission lives under. Default ``"mission"``.
+
+        Returns
+        -------
+        MissionProfile
+            The configured mission.
+
+        Raises
+        ------
+        MissingConfigurationError
+            If a required parameter or schedule is absent. There are no defaults.
+        """
+        prefix = f"{root}|"
+
+        parameters = {}
+        for variable in MISSION_PROFILE_INPUTS:
+            parameters[variable.name] = (
+                config.scalar(f"{prefix}{variable.name}", units=variable.units),
+                variable.units,
+            )
+
+        schedules = {}
+        for spec in MISSION_PHASES:
+            if spec.kind.name != "STEADY_FLIGHT":
+                continue
+            airspeed_path = f"{prefix}schedule|{spec.name}|Ueas"
+            vertical_path = f"{prefix}schedule|{spec.name}|vs"
+            config.require_all([airspeed_path, vertical_path])
+            schedules[spec.name] = PhaseSchedule(
+                equivalent_airspeed=config.value(airspeed_path).tolist(),
+                vertical_speed=config.value(vertical_path).tolist(),
+                airspeed_units=config.units(airspeed_path),
+                vertical_speed_units=config.units(vertical_path),
+            )
+
+        guess_path = f"{prefix}takeoff_speed_guess"
+        config.require_all([guess_path])
+        takeoff_speed_guess = (config.scalar(guess_path), config.units(guess_path))
+
+        continuation = []
+        continuation_prefix = f"{prefix}continuation|"
+        step_names = sorted(
+            {n[len(continuation_prefix) :].split("|")[0] for n in config if n.startswith(continuation_prefix)}
+        )
+        for step_name in step_names:
+            step_root = f"{continuation_prefix}{step_name}|"
+            schedule_root = f"{step_root}schedule|"
+            overrides = {}
+            schedule_entries: dict[str, dict[str, str]] = {}
+            for name in config:
+                if not name.startswith(step_root):
+                    continue
+                if name.startswith(schedule_root):
+                    # continuation|<step>|schedule|<phase>|<Ueas|vs>
+                    phase_name, quantity = name[len(schedule_root) :].split("|")
+                    schedule_entries.setdefault(phase_name, {})[quantity] = name
+                    continue
+                overrides[name[len(step_root) :]] = (config.scalar(name), config.units(name))
+
+            phase_overrides = {}
+            for phase_name, paths in schedule_entries.items():
+                if set(paths) != {"Ueas", "vs"}:
+                    raise ValueError(
+                        f"Continuation step '{step_name}' overrides the schedule for phase '{phase_name}' "
+                        f"but gives {sorted(paths)}; both 'Ueas' and 'vs' are required. Overriding one "
+                        f"alone would silently keep the other from the design profile."
+                    )
+                phase_overrides[phase_name] = PhaseSchedule(
+                    equivalent_airspeed=config.value(paths["Ueas"]).tolist(),
+                    vertical_speed=config.value(paths["vs"]).tolist(),
+                    airspeed_units=config.units(paths["Ueas"]),
+                    vertical_speed_units=config.units(paths["vs"]),
+                )
+
+            continuation.append(
+                ContinuationStep(
+                    description=step_name,
+                    overrides=overrides,
+                    phase_overrides=phase_overrides,
+                )
+            )
+
+        return cls(
+            schedules=schedules,
+            parameters=parameters,
+            continuation=continuation,
+            takeoff_speed_guess=takeoff_speed_guess,
+        )
+
     def __post_init__(self) -> None:
         required_phases = {spec.name for spec in MISSION_PHASES if spec.kind.name == "STEADY_FLIGHT"}
         missing_phases = sorted(required_phases - set(self.schedules))
