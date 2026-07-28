@@ -28,7 +28,14 @@ from cdadt.core.configuration import (
     ConfigurationError,
     MissingConfigurationError,
 )
-from cdadt.core.discipline import CouplingError, Discipline, check_coupling
+from cdadt.core.discipline import (
+    CouplingError,
+    Discipline,
+    DisciplineGroup,
+    DisciplineScope,
+    check_coupling,
+    resolve_input_units,
+)
 from cdadt.core.provider import Provider, ProviderContractError
 from cdadt.core.variables import Variable, VariableConflictError, VariableSet
 
@@ -37,6 +44,8 @@ __all__ = [
     "ConfigurationError",
     "CouplingError",
     "Discipline",
+    "DisciplineGroup",
+    "DisciplineScope",
     "MissingConfigurationError",
     "Provider",
     "ProviderContractError",
@@ -44,4 +53,5 @@ __all__ = [
     "VariableConflictError",
     "VariableSet",
     "check_coupling",
+    "resolve_input_units",
 ]

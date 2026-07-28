@@ -26,9 +26,13 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-import openmdao.api as om
-
-from cdadt.core.discipline import CouplingError, Discipline, check_coupling
+from cdadt.core.discipline import (
+    CouplingError,
+    Discipline,
+    DisciplineGroup,
+    DisciplineScope,
+    check_coupling,
+)
 from cdadt.mission.contract import (
     AIRCRAFT_MODEL_OUTPUTS,
     PHASE_SPECS_BY_NAME,
@@ -38,45 +42,19 @@ from cdadt.mission.contract import (
 __all__ = ["AircraftModelFactory", "CdadtAircraftModel"]
 
 
-class CdadtAircraftModel(om.Group):
-    """Base class for the group OpenConcept instantiates inside every mission phase.
+class CdadtAircraftModel(DisciplineGroup):
+    """The group OpenConcept instantiates inside every mission phase.
+
+    A :class:`~cdadt.core.discipline.DisciplineGroup` whose ``num_nodes`` and
+    ``flight_phase`` options are the ones OpenConcept sets at construction. It contributes
+    no physics of its own: the subsystems are added by the disciplines, and everything is
+    promoted, matching how OpenConcept promotes the aircraft model itself
+    (``promotes_inputs=["*"], promotes_outputs=["*"]``).
 
     This class is not used directly. :meth:`AircraftModelFactory.build` produces a subclass
-    with ``_cdadt_disciplines`` bound, and OpenConcept instantiates that.
-
-    Notes
-    -----
-    Two OpenMDAO options are declared, both set by OpenConcept at construction:
-    ``num_nodes``, the number of analysis points in the phase, and ``flight_phase``, the
-    name of the phase being built.
-
-    The subsystems are added by the disciplines themselves. This class contributes no
-    physics of its own; it exists to satisfy OpenConcept's construction signature and to
-    give the disciplines a group to build into.
+    with ``_cdadt_disciplines`` and ``_cdadt_config`` bound, and OpenConcept instantiates
+    that.
     """
-
-    _cdadt_disciplines: tuple[Discipline, ...] = ()
-
-    def initialize(self) -> None:
-        """Declare the options OpenConcept passes at construction."""
-        self.options.declare("num_nodes", default=1, types=int, desc="Number of analysis points in this phase")
-        self.options.declare("flight_phase", default=None, types=str, desc="Name of the mission phase")
-
-    def setup(self) -> None:
-        """Build each discipline into this group, promoting everything.
-
-        Promotion is total in both directions, matching how OpenConcept promotes the
-        aircraft model itself (``promotes_inputs=["*"], promotes_outputs=["*"]``). Coupling
-        between disciplines and to the surrounding phase is therefore by name, which is
-        exactly what :func:`~cdadt.core.discipline.check_coupling` validated before the
-        model was built.
-        """
-        num_nodes = self.options["num_nodes"]
-        flight_phase = self.options["flight_phase"]
-
-        for discipline in self._cdadt_disciplines:
-            subgroup = self.add_subsystem(discipline.name, om.Group(), promotes=["*"])
-            discipline.build(subgroup, num_nodes=num_nodes, flight_phase=flight_phase)
 
 
 class AircraftModelFactory:
@@ -125,11 +103,14 @@ class AircraftModelFactory:
             factories never share state.
         """
         discipline_names = "_".join(d.name for d in self._disciplines) or "empty"
+        configs = {id(d.config): d.config for d in self._disciplines}
+        config = next(iter(configs.values())) if len(configs) == 1 else None
         return type(
             f"CdadtAircraftModel_{discipline_names}",
             (CdadtAircraftModel,),
             {
                 "_cdadt_disciplines": self._disciplines,
+                "_cdadt_config": config,
                 "__doc__": (
                     "cdadt aircraft model built from disciplines: "
                     + ", ".join(d.name for d in self._disciplines)
@@ -148,6 +129,16 @@ class AircraftModelFactory:
           (:func:`~cdadt.core.discipline.check_coupling`), and
         * the set produces thrust, drag, and mass.
         """
+        aircraft_scoped = [d.name for d in self._disciplines if d.scope is not DisciplineScope.PHASE]
+        if aircraft_scoped:
+            raise ValueError(
+                f"{aircraft_scoped} are aircraft-scoped disciplines and must not be built inside the "
+                f"mission phases. Geometry, empty weight, tail sizing and maximum lift coefficients are "
+                f"properties of the design, not of a flight condition; building them per phase would "
+                f"evaluate them twelve times and let them differ between phases. Build them above the "
+                f"mission instead."
+            )
+
         provided = set()
         for discipline in self._disciplines:
             provided |= discipline.provides().names

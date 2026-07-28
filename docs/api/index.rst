@@ -9,3 +9,4 @@ API reference
 
    core
    mission
+   disciplines
