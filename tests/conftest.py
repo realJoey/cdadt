@@ -7,9 +7,13 @@ once per session and comparing many times.
 
 from __future__ import annotations
 
+import copy
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
+import yaml
 
 from cdadt import Config, SizingAnalysis
 
@@ -18,6 +22,29 @@ ROOT = Path(__file__).resolve().parent.parent
 
 #: Directory holding the shipped case files.
 CASES = ROOT / "cases"
+
+
+def case_dict(name: str) -> dict[str, Any]:
+    """Return a shipped case file as a fresh, mutable dictionary.
+
+    Verification studies vary one thing about a shipped case -- the grid, a tolerance, the
+    continuation ladder -- and compare. Re-reading the YAML each time is what keeps one study
+    from perturbing the next through a shared object.
+    """
+    with open(CASES / name, encoding="utf-8") as handle:
+        return copy.deepcopy(yaml.safe_load(handle))
+
+
+@pytest.fixture(scope="session")
+def sizing_case() -> Callable[[], dict[str, Any]]:
+    """Return a factory for fresh copies of the shipped sizing case, as a dictionary."""
+    return lambda: case_dict("b738.yaml")
+
+
+@pytest.fixture(scope="session")
+def optimization_case() -> Callable[[], dict[str, Any]]:
+    """Return a factory for fresh copies of the shipped optimization case, as a dictionary."""
+    return lambda: case_dict("b738_optimization.yaml")
 
 
 @pytest.fixture(scope="session")

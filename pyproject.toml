@@ -57,7 +57,8 @@ markers = [
     "unit: exercises one cdadt class in isolation, with no OpenMDAO model",
     "contract: checks the cdadt <-> OpenConcept boundary itself",
     "integration: builds and converges a real OpenConcept model",
-    "validation: compares cdadt against an external reference that is run, not quoted",
+    "verification: establishes that the equations are solved right -- grid convergence, derivative accuracy, solver tolerance, reproducibility",
+    "validation: establishes that the right equations were solved -- against an external reference that is run, or against physical reality",
     "slow: takes minutes; excluded from the fast loop",
 ]
 addopts = "--strict-markers"
