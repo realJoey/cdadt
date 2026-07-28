@@ -1,4 +1,21 @@
-﻿name: cdadt_env
+# Environment for cdadt. Regenerated from a working cdadt_env with the two editable
+# installs removed: cdadt itself and openconcept are installed with `pip install -e`
+# afterwards, and a `conda env export` records them as PyPI pins that either do not exist
+# or would fetch a different OpenConcept than the local clone. See docs/install.rst.
+#
+#
+# The libblas/libcblas/liblapack specs carry an explicit '=*openblas' build selector. That is
+# load-bearing on Windows and cannot be dropped: without it conda resolves the MKL-backed
+# build, and NumPy then aborts the interpreter with 0xc06d007f inside numpy.linalg.solve --
+# which OpenConcept calls at import time, so the failure happens before any cdadt code runs.
+# 'conda env export --no-builds' strips those selectors, which is why this file is not a raw
+# export. Verified by building a fresh environment from this file and running the full suite.
+# Usage:
+#   conda env create -f environment.yml
+#   conda activate cdadt_env
+#   pip install -e <path to openconcept clone> --no-deps
+#   pip install -e ".[dev,docs]"
+name: cdadt_env
 channels:
   - conda-forge
   - defaults
@@ -53,11 +70,11 @@ dependencies:
   - krb5=1.22.2
   - lcms2=2.19.1
   - lerc=4.2.0
-  - libblas=3.11.0
+  - libblas=3.11.0=*openblas
   - libbrotlicommon=1.2.0
   - libbrotlidec=1.2.0
   - libbrotlienc=1.2.0
-  - libcblas=3.11.0
+  - libcblas=3.11.0=*openblas
   - libclang13=22.1.8
   - libdeflate=1.25
   - libexpat=2.8.1
@@ -73,7 +90,7 @@ dependencies:
   - libintl=0.22.5
   - libintl-devel=0.22.5
   - libjpeg-turbo=3.2.0
-  - liblapack=3.11.0
+  - liblapack=3.11.0=*openblas
   - liblzma=5.8.3
   - libopenblas=0.3.33
   - libpng=1.6.58
@@ -161,9 +178,7 @@ dependencies:
   - pip:
       - appdirs==1.4.4
       - baron==0.10.1
-      - cdadt==0.1.0
       - latexcodec==3.0.1
-      - openconcept==1.2.6
       - pybtex==0.26.1
       - pybtex-docutils==1.0.3
       - redbaron==0.9.2
@@ -177,4 +192,3 @@ dependencies:
       - sphinxcontrib-autoprogram==0.1.9
       - sphinxcontrib-bibtex==2.7.0
       - sphinxcontrib-jquery==4.1
-prefix: C:\Users\joeyg\anaconda3\envs\cdadt_env

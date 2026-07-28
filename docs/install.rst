@@ -54,8 +54,7 @@ The OpenBLAS pin
 Reproducing the exact environment
 ---------------------------------
 
-``environment.yml`` at the repository root is an export of the environment these results were
-produced in, and can be used directly:
+``environment.yml`` at the repository root pins the environment these results were produced in:
 
 .. code-block:: bash
 
@@ -63,6 +62,22 @@ produced in, and can be used directly:
    conda activate cdadt_env
    pip install -e /path/to/openconcept --no-deps
    pip install -e ".[dev,docs]"
+
+**It is not a raw ``conda env export``, and it must not be regenerated as one.** A plain export
+is broken in two ways that only surface when someone builds from it, and both were found by
+building a fresh environment from this file and running the whole suite in it:
+
+*It records the editable installs as PyPI pins.* ``conda env export`` writes ``cdadt==0.2.0``
+and ``openconcept==1.2.6`` into the pip section, because that is what the metadata of an
+editable install looks like. Building from that would try to fetch cdadt from PyPI, where it
+does not exist, and would fetch a *different* OpenConcept than the local clone. Both are
+therefore omitted, and installed with ``pip install -e`` afterwards.
+
+*``--no-builds`` strips the BLAS variant selector.* The ``libblas``, ``libcblas`` and
+``liblapack`` entries carry an explicit ``=*openblas`` build selector. Without it conda resolves
+the MKL-backed build, and the environment then dies exactly as described above -- ``0xc06d007f``
+inside ``numpy.linalg.solve``, during OpenConcept's import, before any cdadt code runs. The
+selector is load-bearing, and an export would silently remove it.
 
 Which OpenConcept
 -----------------
@@ -84,3 +99,13 @@ Checking the installation
 The full suite runs the shipped sizing case, OpenConcept's own example, and the shipped
 optimization study. If it passes, the installation is not merely importable but produces the
 documented numbers.
+
+Note that a broken BLAS does not fail gracefully. It aborts the interpreter, so ``pytest``
+terminates mid-collection with a Windows fatal exception rather than reporting a failed test. If
+that happens, check the BLAS variant before anything else:
+
+.. code-block:: bash
+
+   conda list -n cdadt_env "^(libblas|libopenblas|mkl)$"
+
+``libblas`` must show an ``*openblas`` build.
