@@ -1,0 +1,242 @@
+# =============================================================================================
+# Boeing 737-800 -- full mission sizing
+# =============================================================================================
+# Sizes a 737-800-class jet transport against a 2800 nmi design mission with a Part 25 reserve
+# diversion and loiter, including the balanced-field takeoff.
+#
+# Every number below is transcribed from OpenConcept's own B738 sizing data file,
+# `openconcept/examples/aircraft_data/B738_sizing.py`, so that this case reproduces the
+# reference example exactly. `tests/test_validation.py` runs that example live and compares.
+#
+# The aircraft is *sized*, not looked up: the black box uses empirical weight and drag buildups
+# and a rubberized engine deck rather than the known weights of the real aeroplane, so changing
+# any parameter here produces a consistent clean-sheet design rather than an inconsistent 737.
+# =============================================================================================
+
+black_box:
+  # The sizing analysis cdadt drives. Loaded by name; never modified, never subclassed.
+  model: openconcept.examples.B738_sizing:B738SizingMissionAnalysis
+  # Analysis points per mission phase. Must be odd (Simpson's rule). The reference example
+  # runs 21.
+  num_nodes: 21
+
+solver:
+  # The Newton solve that closes the weight loop and the mission's own balances together.
+  maxiter: 20
+  atol: 1.0e-9
+  rtol: 1.0e-9
+  iprint: -1
+  err_on_non_converge: true
+
+# ---------------------------------------------------------------------------------------------
+# Aircraft
+# ---------------------------------------------------------------------------------------------
+# Sources are the ones OpenConcept's data file records: a technical site, Wikipedia and its own
+# earlier B738 model. They are estimates for a real aeroplane, not measurements, and the
+# `source` field says so.
+aircraft:
+
+  # -------------------- Aerodynamics --------------------
+  ac|aero|polar|e:
+    value: 0.801
+    source: OpenConcept B738 example estimate
+  ac|aero|Mach_max:
+    value: 0.82
+    source: Boeing 737-800 maximum operating Mach
+  ac|aero|Vstall_land:
+    value: 115
+    units: kn
+    source: OpenConcept B738_sizing estimate
+  ac|aero|airfoil_Cl_max:
+    value: 1.75
+    source: OpenConcept B738_sizing estimate for a supercritical airfoil
+  ac|aero|takeoff_flap_deg:
+    value: 15
+    units: deg
+    source: Boeing 737-800 normal takeoff flap setting
+
+  # -------------------- Propulsion --------------------
+  ac|propulsion|engine|rating:
+    value: 27.0e3
+    units: lbf
+    source: CFM56-7B27 sea-level static thrust
+  ac|propulsion|num_engines:
+    value: 2
+    source: Boeing 737-800 configuration
+
+  # -------------------- Wing --------------------
+  ac|geom|wing|S_ref:
+    value: 124.6
+    units: m**2
+    source: b737.org.uk technical specifications
+  ac|geom|wing|AR:
+    value: 9.45
+    source: b737.org.uk technical specifications
+  ac|geom|wing|c4sweep:
+    value: 25
+    units: deg
+    source: b737.org.uk technical specifications
+  ac|geom|wing|taper:
+    value: 0.159
+    source: b737.org.uk technical specifications
+  ac|geom|wing|toverc:
+    value: 0.12
+    source: OpenConcept B738_sizing estimate
+
+  # -------------------- Horizontal stabilizer --------------------
+  # Its area is not given: the black box sizes it from the tail volume coefficient.
+  ac|geom|hstab|AR:
+    value: 6.16
+    source: b737.org.uk technical specifications
+  ac|geom|hstab|c4sweep:
+    value: 30
+    units: deg
+    source: b737.org.uk technical specifications
+  ac|geom|hstab|taper:
+    value: 0.203
+    source: b737.org.uk technical specifications
+  ac|geom|hstab|toverc:
+    value: 0.12
+    source: OpenConcept B738_sizing estimate
+
+  # -------------------- Vertical stabilizer --------------------
+  ac|geom|vstab|AR:
+    value: 1.91
+    source: b737.org.uk technical specifications
+  ac|geom|vstab|c4sweep:
+    value: 35
+    units: deg
+    source: b737.org.uk technical specifications
+  ac|geom|vstab|taper:
+    value: 0.271
+    source: b737.org.uk technical specifications
+  ac|geom|vstab|toverc:
+    value: 0.12
+    source: OpenConcept B738_sizing estimate
+
+  # -------------------- Fuselage --------------------
+  ac|geom|fuselage|length:
+    value: 38.08
+    units: m
+    source: b737.org.uk technical specifications
+  ac|geom|fuselage|height:
+    value: 3.76
+    units: m
+    source: b737.org.uk technical specifications
+
+  # -------------------- Nacelle --------------------
+  ac|geom|nacelle|length:
+    value: 4.3
+    units: m
+    source: OpenConcept B738_sizing photogrammetry estimate
+  ac|geom|nacelle|diameter:
+    value: 2
+    units: m
+    source: OpenConcept B738_sizing photogrammetry estimate
+
+  # -------------------- Landing gear --------------------
+  ac|geom|maingear|length:
+    value: 1.8
+    units: m
+    source: OpenConcept B738_sizing estimate
+  ac|geom|maingear|num_wheels:
+    value: 4
+    source: Boeing 737-800 configuration
+  ac|geom|maingear|num_shock_struts:
+    value: 2
+    source: Boeing 737-800 configuration
+  ac|geom|nosegear|length:
+    value: 1.3
+    units: m
+    source: OpenConcept B738_sizing estimate
+  ac|geom|nosegear|num_wheels:
+    value: 2
+    source: Boeing 737-800 configuration
+
+  # -------------------- Weights, cabin and occupancy --------------------
+  ac|weights|W_payload:
+    value: 18.0e3
+    units: kg
+    source: OpenConcept B738_sizing design payload
+  ac|num_passengers_max:
+    value: 189
+    source: Boeing 737-800 single-class maximum
+  ac|num_flight_deck_crew:
+    value: 2
+    source: Boeing 737-800 configuration
+  ac|num_cabin_crew:
+    value: 4
+    source: Boeing 737-800 configuration
+  ac|cabin_pressure:
+    value: 8.95
+    units: psi
+    source: Boeing 737-800 cabin differential
+
+# ---------------------------------------------------------------------------------------------
+# Initial guesses
+# ---------------------------------------------------------------------------------------------
+# Starting points for the states the coupled Newton solve drives. These decide whether the
+# solver converges, not what it converges to; the same values the reference example seeds.
+initial_guesses:
+  ac|weights|MTOW:
+    value: 50.0e3
+    units: kg
+
+# ---------------------------------------------------------------------------------------------
+# Mission
+# ---------------------------------------------------------------------------------------------
+mission:
+  parameters:
+    mission_range: {value: 2800, units: nmi}
+    cruise|h0: {value: 35000, units: ft}
+    reserve_range: {value: 200, units: nmi}
+    reserve|h0: {value: 15000, units: ft}
+
+  schedule:
+    climb:
+      Ueas: {value: [230, 252], units: kn}
+      vs: {value: [2300, 400], units: ft/min}
+    cruise:
+      Ueas: {value: [252, 252], units: kn}
+      vs: {value: 0, units: ft/min}
+    descent:
+      Ueas: {value: [252, 250], units: kn}
+      vs: {value: [-1300, -800], units: ft/min}
+    reserve_climb:
+      Ueas: {value: [230, 230], units: kn}
+      vs: {value: [3000, 2300], units: ft/min}
+    reserve_cruise:
+      Ueas: {value: [250, 250], units: kn}
+      vs: {value: 0, units: ft/min}
+    reserve_descent:
+      Ueas: {value: [250, 250], units: kn}
+      vs: {value: [-800, -800], units: ft/min}
+    loiter:
+      Ueas: {value: 250, units: kn}
+      vs: {value: [0, 0], units: ft/min}
+
+  # The ground-roll phases integrate acceleration from a standstill, so their solver needs a
+  # true-airspeed starting guess rather than a schedule.
+  takeoff_speed_guess: {value: 100, units: kn}
+
+  # -------------------- Continuation --------------------
+  # The design mission does not converge from a cold start. Each step below is converged in
+  # turn, so the solver enters the next from a converged neighbour. This is the same ladder
+  # OpenConcept's own run script walks, written as data rather than as statements.
+  continuation:
+    - description: short range at low altitude, gentle descent
+      parameters:
+        mission_range: {value: 500, units: nmi}
+        cruise|h0: {value: 5000, units: ft}
+        reserve_range: {value: 100, units: nmi}
+        reserve|h0: {value: 1000, units: ft}
+      schedule:
+        descent:
+          Ueas: {value: [252, 250], units: kn}
+          vs: {value: [-800, -800], units: ft/min}
+
+    - description: design range and altitude, still with the gentle descent
+      schedule:
+        descent:
+          Ueas: {value: [252, 250], units: kn}
+          vs: {value: [-800, -800], units: ft/min}
