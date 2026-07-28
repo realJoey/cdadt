@@ -103,7 +103,7 @@ def openconcept_reference():
     try:
         problem = run_738_sizing_analysis(num_nodes=REFERENCE_NUM_NODES)
         mtow = problem.get_val("ac|weights|MTOW", units="kg").item()
-    except Exception as err:  # noqa: BLE001 -- any failure means the reference is unusable here
+    except Exception as err:
         pytest.skip(f"OpenConcept's B738_sizing example did not run in this environment: {err}")
 
     import numpy as np
