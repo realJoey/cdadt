@@ -39,8 +39,9 @@ constants, and live in the case file.
 
 from __future__ import annotations
 
+import difflib
 import importlib
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 
 import numpy as np
@@ -423,7 +424,7 @@ class OpenConceptSizingBox:
         return True
 
     def check_settable(self, names: Iterable[str]) -> None:
-        """Raise if any of ``names`` is not a variable the box lets a caller set.
+        """Raise if any of ``names`` is not an independent variable of the box.
 
         Parameters
         ----------
@@ -437,20 +438,32 @@ class OpenConceptSizingBox:
             computed output would be silently overwritten by the next solve, and declaring one
             as a design variable is an OpenMDAO error thrown far from its cause.
         """
-        settable = self.settable()
-        unknown = [name for name in names if name not in settable]
+        self._check(names, self.settable(), "independent variables of")
+
+    def check_addressable(self, names: Iterable[str]) -> None:
+        """Raise if any of ``names`` is not a variable of the box at all.
+
+        Looser than :meth:`check_settable`, and used for the solver's starting guesses. A
+        coupled state such as maximum takeoff weight is a computed *output* -- it is what the
+        weight closure solves for -- so it is not an independent variable and can never be a
+        design variable. Writing a value onto it before the first solve is nonetheless
+        meaningful and often decisive: it is where Newton starts.
+        """
+        self._check(names, self.readable(), "variables of")
+
+    def _check(self, names: Iterable[str], known: Mapping[str, VariableInfo], what: str) -> None:
+        """Raise a suggestion-carrying error for every name outside ``known``."""
+        unknown = [name for name in names if name not in known]
         if not unknown:
             return
-        import difflib
-
         details = []
         for name in unknown:
-            close = difflib.get_close_matches(name, settable, n=3)
+            close = difflib.get_close_matches(name, known, n=3)
             details.append(f"  {name}" + (f"   (did you mean {', '.join(close)}?)" if close else ""))
         raise BlackBoxError(
-            "These variables are not settable inputs of the black box "
-            f"'{self._model_spec}':\n" + "\n".join(details) + f"\n{len(settable)} variables are settable; "
-            "run 'cdadt inspect <case>' to list them."
+            f"These are not {what} the black box '{self._model_spec}':\n"
+            + "\n".join(details)
+            + f"\n{len(known)} are; run 'cdadt inspect <case>' to list them."
         )
 
     # -- getting and setting -------------------------------------------------------------

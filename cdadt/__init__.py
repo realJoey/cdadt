@@ -11,7 +11,20 @@ Everything cdadt contributes is a class: the disciplines that own the interface,
 that is flown, the certification basis that must hold, and the optimizer that drives the box.
 """
 
+from cdadt.aircraft import Aircraft, AircraftError
+from cdadt.analysis import SizingAnalysis
 from cdadt.blackbox import BlackBoxError, OpenConceptSizingBox, SolverSettings, VariableInfo
+from cdadt.config import (
+    BlackBoxConfig,
+    Config,
+    ConfigError,
+    DesignVariableSpec,
+    MissionConfig,
+    ObjectiveSpec,
+    OptimizationConfig,
+    RequirementSpec,
+    SolverConfig,
+)
 from cdadt.disciplines import (
     AIRCRAFT_DISCIPLINES,
     Aerodynamics,
@@ -26,24 +39,39 @@ from cdadt.disciplines import (
 )
 from cdadt.mission import ContinuationStep, MissionProfile, PhaseSchedule
 from cdadt.parameters import Parameter, Response
+from cdadt.results import ResponseCatalog, SizingResults
 
 __version__ = "0.2.0"
 
 __all__ = [
     "AIRCRAFT_DISCIPLINES",
     "Aerodynamics",
+    "Aircraft",
+    "AircraftError",
+    "BlackBoxConfig",
     "BlackBoxError",
+    "Config",
+    "ConfigError",
     "ContinuationStep",
+    "DesignVariableSpec",
     "Discipline",
     "DisciplineError",
     "Geometry",
+    "MissionConfig",
     "MissionProfile",
+    "ObjectiveSpec",
     "OpenConceptSizingBox",
+    "OptimizationConfig",
     "Parameter",
     "Performance",
     "PhaseSchedule",
     "Propulsion",
+    "RequirementSpec",
     "Response",
+    "ResponseCatalog",
+    "SizingAnalysis",
+    "SizingResults",
+    "SolverConfig",
     "SolverSettings",
     "Stability",
     "Structures",
