@@ -23,6 +23,34 @@ Everything except the documentation theme comes from ``conda-forge``. This matte
 ``pyoptsparse``, ``ipopt``, and ``cyipopt``: conda-forge ships prebuilt IPOPT binaries for
 Windows, which avoids compiling the optimizer from source.
 
+The stack this resolves to, and the one cdadt's results were produced with:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 20 50
+
+   * - Package
+     - Version
+     - Note
+   * - Python
+     - 3.11.15
+     - OpenConcept's CI upper bound
+   * - NumPy
+     - 1.26.4
+     - Required: OpenConcept declares ``<2``, and the bound is real
+   * - OpenMDAO
+     - 3.41.0
+     - What conda selects under the NumPy bound
+   * - pyOptSparse / IPOPT
+     - 2.16.0 / 3.14.19
+     - Prebuilt, works against NumPy 1.26
+
+.. note::
+   OpenMDAO 3.41 is noticeably slower than 3.43 on the coupled sizing optimization -- the
+   IPOPT run takes tens of minutes rather than one. That is a cost of respecting
+   OpenConcept's NumPy bound, and it is worth paying: under NumPy 2 the reference does not
+   converge at all, so nothing built on it can be checked.
+
 .. warning::
    **Pin the BLAS implementation to OpenBLAS.** The second ``conda install`` line above is
    not optional on Windows. Solving the environment without it selects the MKL-backed
