@@ -79,7 +79,17 @@ def test_optimize_runs_the_study_and_reports_the_traceability_matrix(tmp_path, c
     assert archived["succeeded"] is True
     assert archived["objective"] == "total_fuel"
     assert {entry["status"] for entry in archived["constraints"]} <= {"MET", "ACTIVE"}
-    assert all(entry["traceable"] for entry in archived["constraints"])
+    # The case declares both kinds of constraint, and each must be archived as what it is:
+    # certification evidence names a regulation and a source, the throttle bands name neither
+    # and are plain design constraints. See :mod:`cdadt.certification`.
+    declared = {entry["name"]: entry["traceable"] for entry in archived["constraints"]}
+    assert declared == {
+        "takeoff_field_length": True,
+        "engine_out_climb_gradient": True,
+        "climb_throttle": False,
+        "cruise_throttle": False,
+    }
+    assert "Design constraints with no stated regulation or source" in printed
 
 
 @pytest.mark.integration

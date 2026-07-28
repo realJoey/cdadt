@@ -8,6 +8,8 @@ an OpenMDAO problem.
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import pytest
 
@@ -67,7 +69,7 @@ def test_a_name_is_tried_as_written_then_under_the_mission_path():
 def test_a_name_that_resolves_neither_way_names_both_attempts():
     """Whether it is ``cruise|h0`` or ``mission.cruise|h0`` is what a failure must answer."""
     conditions = InitialConditions({"nonsense": (1.0, None)})
-    with pytest.raises(MissionError, match="neither 'nonsense' nor 'mission.nonsense'"):
+    with pytest.raises(MissionError, match=re.escape("neither 'nonsense' nor 'mission.nonsense'")):
         conditions.check(RecordingBox(SHAPES))
 
 

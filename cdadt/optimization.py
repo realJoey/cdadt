@@ -210,6 +210,16 @@ class Optimizer:
         return self._basis
 
     @property
+    def design_variables(self) -> dict[str, str]:
+        """Return ``case-file name -> black-box path`` for every freed variable.
+
+        The two differ whenever a mission value is freed: ``cruise|h0`` in a case file is
+        ``mission.cruise|h0`` inside the box. Resolved once, against a cheap probe, because a
+        design variable has to be declared before the real model exists to be asked.
+        """
+        return dict(self._resolved)
+
+    @property
     def objective_path(self) -> str:
         """Return the black-box path of the objective."""
         return self._catalog.path(self._config.objective.name)
@@ -222,16 +232,26 @@ class Optimizer:
 
     # -- running -------------------------------------------------------------------------
 
-    def run(self, verbose: bool = False) -> OptimizationOutcome:
-        """Declare, converge the baseline, then drive.
+    def prepare(self, verbose: bool = False, driver: bool = True) -> SizingResults:
+        """Declare the study on the box and converge the baseline design.
 
         Parameters
         ----------
         verbose : bool, optional
             Print the continuation steps and the driver's own progress. Default ``False``.
+        driver : bool, optional
+            Attach the driver the case file asks for. Passing ``False`` leaves the same
+            declared, converged problem without one, which is what a total-derivative check
+            needs: the derivatives an optimizer would step on, before it has stepped.
+
+        Returns
+        -------
+        SizingResults
+            The converged baseline, read before anything has been optimized.
         """
         self._analysis.build(register=[self._declare])
-        self._analysis.box.problem.driver = self._driver(verbose=verbose)
+        if driver:
+            self._analysis.box.problem.driver = self._driver(verbose=verbose)
 
         self._analysis.converge(verbose=verbose)
         baseline = self._analysis.results()
@@ -244,7 +264,18 @@ class Optimizer:
             name: float(box.get(self._resolved[name], units=spec.units))
             for name, spec in self._config.free_variables.items()
         }
+        return baseline
 
+    def run(self, verbose: bool = False) -> OptimizationOutcome:
+        """Declare, converge the baseline, then drive.
+
+        Parameters
+        ----------
+        verbose : bool, optional
+            Print the continuation steps and the driver's own progress. Default ``False``.
+        """
+        baseline = self.prepare(verbose=verbose)
+        box = self._analysis.box
         succeeded = box.run_driver()
         return OptimizationOutcome(
             baseline=baseline,

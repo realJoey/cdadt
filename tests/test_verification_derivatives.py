@@ -37,6 +37,16 @@ REQUIRED_AGREEMENT = 1e-3
 NEGLIGIBLE = 1e-8
 
 
+#: The three variables freed for the check, as ``name -> optimize entry``. A variable is freed
+#: by gaining an ``optimize:`` entry where the case file already declares it, so the units and
+#: the value come from that declaration and are not restated here.
+FREED = {
+    "ac|geom|wing|S_ref": {"lower": 90.0, "upper": 180.0},
+    "ac|geom|wing|AR": {"lower": 7.0, "upper": 13.0},
+    "ac|propulsion|engine|rating": {"lower": 18.0e3, "upper": 34.0e3},
+}
+
+
 @pytest.fixture(scope="module")
 def derivative_check(optimization_case):
     """Build, converge, and check totals at every step size.
@@ -48,18 +58,16 @@ def derivative_check(optimization_case):
     case = optimization_case()
     case["black_box"]["num_nodes"] = 11
     case["solver"].update({"maxiter": 60, "atol": 1e-9, "rtol": 1e-9})
-    case["optimization"]["design_variables"] = [
-        {"name": "ac|geom|wing|S_ref", "lower": 90.0, "upper": 180.0, "units": "m**2"},
-        {"name": "ac|geom|wing|AR", "lower": 7.0, "upper": 13.0},
-        {"name": "ac|propulsion|engine|rating", "lower": 18.0e3, "upper": 34.0e3, "units": "lbf"},
-    ]
-    case["optimization"]["requirements"] = [
-        requirement for requirement in case["optimization"]["requirements"] if requirement["type"] != "throttle_limit"
+    for name, spec in case["design_variables"].items():
+        spec.pop("optimize", None)
+        if name in FREED:
+            spec["optimize"] = dict(FREED[name])
+    case["constraints"] = [
+        constraint for constraint in case["constraints"] if not constraint["name"].endswith("_throttle")
     ]
 
     optimizer = Optimizer(SizingAnalysis(Config.from_dict(case)))
-    optimizer.analysis.build(register=[optimizer._declare])
-    optimizer.analysis.converge()
+    optimizer.prepare(driver=False)
     problem = optimizer.analysis.box.problem
 
     sweep = {}
@@ -143,4 +151,4 @@ def test_the_signs_of_the_important_derivatives_are_physically_right(derivative_
 
     assert derivative("fuel_burn_final", "AR") < 0.0, "raising aspect ratio should cut fuel"
     assert derivative("engine_out_climb_gradient", "AR") > 0.0, "raising aspect ratio should improve the gradient"
-    assert derivative("balanced_field_length", "rating") < 0.0, "more thrust should shorten the field"
+    assert derivative("takeoff_field_length", "rating") < 0.0, "more thrust should shorten the field"

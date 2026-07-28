@@ -30,23 +30,23 @@ PERTURBATION = 0.02
 IMPROVEMENT_TOLERANCE = 1e-6
 
 
+#: The one variable freed, and the interval it is free over.
+FREED = "ac|geom|wing|AR"
+BOUNDS = {"lower": 8.5, "upper": 10.0}
+
+
 @pytest.fixture(scope="module")
 def optimized(optimization_case):
     """Run a small optimization to convergence and return the optimizer and its outcome."""
     case = optimization_case()
     case["black_box"]["num_nodes"] = 5
     case["solver"].update({"maxiter": 60})
-    case["optimization"]["driver"] = {
-        "name": "IPOPT",
-        "maxiter": 25,
-        "tol": 1e-7,
-        "derivative_mode": "fwd",
-    }
-    case["optimization"]["design_variables"] = [{"name": "ac|geom|wing|AR", "lower": 8.5, "upper": 10.0}]
-    case["optimization"]["requirements"] = [
-        requirement
-        for requirement in case["optimization"]["requirements"]
-        if requirement["type"] == "balanced_field_length"
+    case["driver"] = {"name": "IPOPT", "maxiter": 25, "tol": 1e-7, "derivative_mode": "fwd"}
+    for spec in case["design_variables"].values():
+        spec.pop("optimize", None)
+    case["design_variables"][FREED]["optimize"] = dict(BOUNDS)
+    case["constraints"] = [
+        constraint for constraint in case["constraints"] if constraint["name"] == "takeoff_field_length"
     ]
 
     optimizer = Optimizer(SizingAnalysis(Config.from_dict(case)))
@@ -59,7 +59,7 @@ def optimized(optimization_case):
 def test_the_driver_reported_success_and_the_basis_holds(optimized):
     """Both halves of what cdadt calls success, checked before anything is inferred from it."""
     _optimizer, outcome = optimized
-    assert outcome.succeeded, [result.requirement.name for result in outcome.violated]
+    assert outcome.succeeded, [result.constraint.name for result in outcome.violated]
 
 
 @pytest.mark.verification
@@ -82,32 +82,34 @@ def test_no_feasible_perturbation_of_a_design_variable_improves_the_objective(op
     """
     optimizer, outcome = optimized
     box = optimizer.analysis.box
-    catalog = optimizer.analysis.catalog
     objective_path = optimizer.objective_path
     objective_units = optimizer.objective_units
+    free = optimizer.analysis.config.free_variables
 
     optimum_objective = float(box.get(objective_path, units=objective_units))
     improvements = []
 
-    for variable in optimizer.settings.design_variables:
-        at_optimum = float(box.get(variable.name, units=variable.units))
+    for name, path in optimizer.design_variables.items():
+        spec = free[name]
+        lower, upper = float(spec.optimize.lower), float(spec.optimize.upper)
+        at_optimum = float(box.get(path, units=spec.units))
         for direction in (+1.0, -1.0):
             probe = at_optimum * (1.0 + direction * PERTURBATION)
-            if not (variable.lower <= probe <= variable.upper):
+            if not (lower <= probe <= upper):
                 continue  # the step leaves the design space; not a feasible direction
 
-            box.set(variable.name, probe, units=variable.units)
+            box.set(path, probe, units=spec.units)
             box.run()
             probed_objective = float(box.get(objective_path, units=objective_units))
-            feasible = all(requirement.evaluate(box, catalog).satisfied for requirement in optimizer.basis)
+            feasible = all(constraint.evaluate(box).satisfied for constraint in optimizer.basis)
             improvement = (optimum_objective - probed_objective) / abs(optimum_objective)
             if feasible and improvement > IMPROVEMENT_TOLERANCE:
                 improvements.append(
-                    f"{variable.name} {'+' if direction > 0 else '-'}{PERTURBATION:.0%}: "
+                    f"{name} {'+' if direction > 0 else '-'}{PERTURBATION:.0%}: "
                     f"objective improved by {improvement:.2e} while staying feasible"
                 )
 
-            box.set(variable.name, at_optimum, units=variable.units)
+            box.set(path, at_optimum, units=spec.units)
 
         box.run()  # restore the converged optimum before the next variable
 
@@ -118,19 +120,19 @@ def test_no_feasible_perturbation_of_a_design_variable_improves_the_objective(op
 @pytest.mark.verification
 @pytest.mark.slow
 def test_the_active_set_is_reported_honestly(optimized):
-    """A requirement called active must really be on its limit, and one called met must not be.
+    """A constraint called active must really be on its limit, and one called met must not be.
 
     The traceability matrix is the artefact a certification argument is built from. If it
-    labelled a slack requirement active, or a binding one merely met, the design story it tells
+    labelled a slack constraint active, or a binding one merely met, the design story it tells
     would be wrong in the one place a reader looks.
     """
     _optimizer, outcome = optimized
-    for result in outcome.requirements:
+    for result in outcome.constraints:
         if result.active:
             assert abs(result.relative_margin) <= result.ACTIVE_TOLERANCE, (
-                f"{result.requirement.name} is reported ACTIVE with relative margin " f"{result.relative_margin:.2e}"
+                f"{result.constraint.name} is reported ACTIVE with relative margin " f"{result.relative_margin:.2e}"
             )
         elif result.satisfied:
             assert (
                 result.relative_margin > result.ACTIVE_TOLERANCE
-            ), f"{result.requirement.name} is reported MET but sits on its limit"
+            ), f"{result.constraint.name} is reported MET but sits on its limit"
