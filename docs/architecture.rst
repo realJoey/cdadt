@@ -179,3 +179,29 @@ design variable is a message with suggestions rather than an OpenMDAO error thro
 **Results are read whole.** Every discipline's responses are collected on every run, not
 whichever few a caller asked for. That is what makes a run report complete and two runs
 comparable without re-running either.
+
+The one piece of shared mutable state
+--------------------------------------
+
+There is exactly one, and it is named here rather than left for a reader to find:
+:attr:`cdadt.certification.Requirement.registry`, a class-level dictionary mapping each
+requirement's ``kind`` to its class.
+
+It exists so that a case file can say ``type: balanced_field_length`` and have that resolve
+without a hand-maintained lookup table that would drift out of step with the classes. It is safe
+for specific, checked reasons rather than by convention:
+
+- it is written **only** by ``__init_subclass__``, so it is populated at class-definition time
+  and never during a run;
+- it **refuses a duplicate** ``kind``, so a second class cannot silently displace the first.
+
+Both are asserted by ``test_the_requirement_registry_is_the_only_shared_mutable_state_and_it_is_guarded``,
+which also parses the package to confirm nothing writes to the registry from anywhere else. An
+audit of the whole package found no other module-level or class-level mutable state: everything
+a discipline, an aircraft or an analysis holds is instance state reached through properties that
+validate what they are given.
+
+The only module-level *functions* in the package are argument parsing in
+:mod:`cdadt.cli` and case-file validation helpers in :mod:`cdadt.config`. Neither performs a
+discipline calculation -- there are none to perform in cdadt, because the physics is inside the
+black box.

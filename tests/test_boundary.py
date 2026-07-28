@@ -203,3 +203,66 @@ def test_the_optional_responses_of_the_shipped_case_are_all_available(built_box,
     assert not unavailable, "The shipped black box no longer publishes: " + "; ".join(
         f"{d}: {', '.join(names)}" for d, names in unavailable.items()
     )
+
+
+# =============================================================================================
+# The one piece of shared mutable state in the package
+# =============================================================================================
+
+
+@pytest.mark.contract
+def test_the_requirement_registry_is_the_only_shared_mutable_state_and_it_is_guarded():
+    """``Requirement.registry`` is a class-level dict, and the only one in cdadt.
+
+    Everything else a discipline or an analysis holds is instance state reached through
+    validating properties. The registry is the deliberate exception: it is how a case file can
+    say ``type: balanced_field_length`` and have that resolve to a class, which is what keeps
+    requirement types extensible without a hand-maintained lookup table.
+
+    It is safe for a specific reason rather than by luck. It is written only by
+    ``__init_subclass__``, so it is populated at class-definition time and never during a run;
+    and it refuses a duplicate ``kind``, so a second class cannot silently displace the first.
+    Both properties are asserted here, because "the only mutable global is fine" is a claim that
+    stops being true the moment someone writes to it from a method.
+    """
+    from cdadt.certification import Requirement, RequirementError
+
+    shipped = {
+        "balanced_field_length",
+        "engine_out_climb_gradient",
+        "throttle_limit",
+        "maximum_takeoff_weight",
+        "design_range",
+        "response_limit",
+    }
+    assert set(Requirement.registry) == shipped, "the shipped requirement types have changed"
+
+    # Nothing but __init_subclass__ may write to it.
+    writers = []
+    for source in _cdadt_sources():
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Attribute) or node.attr != "registry":
+                continue
+            if isinstance(node.ctx, (ast.Store, ast.Del)):
+                writers.append(f"{source.name}:{node.lineno}")
+        for node in ast.walk(tree):
+            # registry[...] = ... and registry.update(...) both count as writes
+            if isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Store):
+                target = node.value
+                if isinstance(target, ast.Attribute) and target.attr == "registry":
+                    enclosing = [
+                        n.name
+                        for n in ast.walk(tree)
+                        if isinstance(n, ast.FunctionDef) and node.lineno in range(n.lineno, n.end_lineno + 1)
+                    ]
+                    if "__init_subclass__" not in enclosing:
+                        writers.append(f"{source.name}:{node.lineno} writes registry outside __init_subclass__")
+    assert not writers, "the requirement registry is written from somewhere unexpected: " + ", ".join(writers)
+
+    # A duplicate kind must be refused rather than silently replacing the incumbent.
+    with pytest.raises(RequirementError, match="both call themselves"):
+
+        class Duplicate(Requirement):
+            kind = "balanced_field_length"
+            response = "takeoff_field_length"
