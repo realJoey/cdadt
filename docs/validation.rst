@@ -1,6 +1,10 @@
 Validation
 ==========
 
+Validation asks whether the right equations were solved. :doc:`verification` asks whether they
+were solved right; read that page too, since a validated model that is not converged is not
+validated.
+
 This page states what has been established, against what, and -- at least as prominently --
 what has not. A tool whose results are quoted in a thesis needs both halves written down in the
 same place.
@@ -46,10 +50,77 @@ while the numbers still look plausible:
   would size an aircraft with no diversion, and would converge just as readily.
 - **The mission flown is the one requested.** ``mission_range_flown == 2800 nmi`` to 1e-6.
 
+**The converged aircraft resembles a real 737-800.** The reference comparison above would pass
+just as well if OpenConcept's physics were nonsense -- both sides would be wrong together. So
+the design is separately checked against things known independently of the model:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 20 20 20
+
+   * - Quantity
+     - cdadt
+     - Published / expected
+     - Agreement
+   * - Maximum takeoff weight
+     - 78,346 kg
+     - ~79,010 kg
+     - −0.8%
+   * - Operating empty weight
+     - 41,748 kg
+     - ~41,410 kg
+     - +0.8%
+   * - Wing span (consistency check)
+     - 34.31 m
+     - 34.32 m
+     - −0.03%
+   * - Cruise Mach
+     - 0.785
+     - 0.72–0.85
+     - in band
+   * - Cruise lift-to-drag ratio
+     - 17.46
+     - 14–20
+     - in band
+   * - Cruise TSFC (lb/lbf/hr)
+     - 0.614
+     - 0.50–0.75
+     - in band
+   * - Wing loading (kg/m²)
+     - 628.8
+     - 500–750
+     - in band
+   * - Sea-level thrust-to-weight
+     - 0.313
+     - 0.25–0.40
+     - in band
+   * - Empty weight fraction
+     - 0.533
+     - 0.45–0.60
+     - in band
+
+Two caveats, stated here rather than buried. The published figures are widely quoted 737-800
+specification values, not certification data, and are checked to ±10% -- a plausibility check,
+not a certification-grade validation. And **wing span is a consistency check, not validation**:
+reference area and aspect ratio are *inputs* taken from the same source as the published span,
+so agreement confirms the geometry is assembled and converted correctly and is not independent
+evidence about the physics.
+
+Cruise is also checked to be genuinely steady level flight -- thrust equals drag to 1e-6 -- which
+is an identity rather than a band, and would fail if the trajectory being integrated were not the
+one the mission claims to fly.
+
+Tested by :mod:`tests.test_validation_physical`.
+
 **The boundary holds.** :mod:`tests.test_boundary` proves, rather than asserts, that no cdadt
 module imports OpenConcept, that no cdadt class inherits from it, that the OpenConcept working
 tree carries no uncommitted change, and that every settable variable of the built box is owned
 by exactly one discipline. See :doc:`blackbox`.
+
+**The black box is the only one that could have been chosen.** ``B738SizingMissionAnalysis`` is
+the sole analysis in OpenConcept's 30,000 lines that combines a balanced-field takeoff, Part 25
+reserves, a closed weight loop and a scalable engine. That is a survey result, not a preference;
+see :doc:`openconcept`.
 
 **The optimization converges and is feasible.** :mod:`tests.test_optimization` runs the shipped
 study end to end and asserts that the driver converged, that no requirement is violated, that
@@ -141,11 +212,13 @@ How to re-establish all of this
 
 .. code-block:: bash
 
-   pytest -q                    # 128 tests: unit, contract, integration, validation
-   pytest -q -m validation      # the live comparison against OpenConcept's own example
+   pytest -q                    # 184 tests, ~3.5 minutes
+   pytest -q -m validation      # this page: the live reference and the physical checks
+   pytest -q -m verification    # grid, solver, derivatives, reproducibility, optimality
    pytest -q -m contract        # the boundary
    pytest -q -m "not slow"      # the fast loop
 
 Every test declares which class of claim it makes -- ``unit``, ``contract``, ``integration``,
-``validation`` -- so that "the suite passes" can be read as a statement about what has actually
-been established rather than as a single undifferentiated green tick.
+``verification``, ``validation`` -- so that "the suite passes" can be read as a statement about
+what has actually been established rather than as a single undifferentiated green tick. The
+counts per class are tabulated at the end of :doc:`verification`.

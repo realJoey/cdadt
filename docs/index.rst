@@ -75,10 +75,17 @@ what is *not* established, :doc:`validation`.
 
 .. toctree::
    :maxdepth: 2
+   :caption: Verification and validation
+
+   verification
+   validation
+
+.. toctree::
+   :maxdepth: 2
    :caption: Reference
 
+   openconcept
    interface
-   validation
    api/index
 
 Indices

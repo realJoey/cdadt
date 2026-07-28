@@ -31,6 +31,25 @@ variables of it. No global state, no module-level cache, no free function doing 
 the objective and the certification requirements are all declared in one YAML case file. Two
 studies that ask different questions of the same aeroplane differ only in data.
 
+## The black box is the only one it could have been
+
+`B738SizingMissionAnalysis` is the **sole** analysis in OpenConcept's ~30,000 lines that combines
+a balanced-field takeoff, Part 25 reserves, a closed weight loop and a scalable engine. Every
+other example is fixed-weight, or lacks the takeoff, or lacks the reserves. That is a survey
+result, not a preference — see `docs/openconcept.rst`.
+
+## Verified: the equations are solved right
+
+| Study | Result |
+|---|---|
+| **Grid convergence** | Observed order **4.6** (Simpson's rule is 4th order); shipped 21-node grid converged to **1e-6** |
+| **Total derivatives** | Agree with finite differences to **8.9e-5**, with the textbook truncation/round-off minimum at step 1e-6 |
+| **Solver floor** | Measured at **1e-9**, grid-independent — which is why 1e-9 is requested and 1e-10 is not reachable |
+| **Reproducibility** | Three different continuation ladders reach the same aircraft to **1e-7**; reruns are bit-identical |
+| **Optimality** | No feasible ±2% perturbation of any design variable improves the objective |
+
+Details and the full tables in `docs/verification.rst`.
+
 ## Validated against the reference, run rather than quoted
 
 `tests/test_validation.py` imports OpenConcept's own `run_738_sizing_analysis`, runs it in the
@@ -46,6 +65,11 @@ solver's own convergence, not an engineering tolerance.
 | Balanced field length | 5,247.7948 ft |
 | Horizontal tail area | 27.9332 m² |
 | Vertical tail area | 20.2101 m² |
+
+And validated against the real aeroplane, independently of OpenConcept: MTOW within **0.8%** and
+OEW within **0.8%** of published 737-800 figures, with cruise L/D 17.5, TSFC 0.614 lb/lbf/hr,
+wing loading 629 kg/m² and thrust-to-weight 0.313 — every dimensionless group inside the band a
+narrow-body transport occupies.
 
 ## Optimized against a certification basis
 
@@ -102,9 +126,15 @@ cdadt optimize cases/b738_optimization.yaml       # ~2 min
 cdadt inspect cases/b738.yaml --what inputs       # what the box accepts
 
 pytest -q -m "not slow"                           # the fast loop
-pytest -q                                         # 128 tests, ~1 min
+pytest -q                                         # 184 tests, ~3.5 min
+pytest -q -m verification                         # grid, derivatives, solver, reproducibility
+pytest -q -m validation                           # reference match + physical checks
 cd docs && make html
 ```
+
+Tests are marked by the class of claim they make — `unit` (94), `contract` (11),
+`integration` (21), `verification` (39), `validation` (19) — so "the suite passes" is a
+statement about what has been established, not one undifferentiated green tick.
 
 ## Layout
 
@@ -140,8 +170,10 @@ docs/               Sphinx
 | `mission.rst` | The profile, and why the continuation ladder is part of the interface |
 | `certification.rst` | Requirements, provenance, the traceability matrix, what cannot be constrained |
 | `optimization.rst` | Design variables, scaling, driver choice, and why IPOPT |
-| `interface.rst` | The generated input/output reference |
+| `verification.rst` | Grid convergence, derivative accuracy, solver floor, reproducibility, optimality |
 | `validation.rst` | What is validated, against what, **and what is not** |
+| `openconcept.rst` | The survey of all ~30,000 lines, and why this black box is the only candidate |
+| `interface.rst` | The generated input/output reference |
 
 ## License
 
