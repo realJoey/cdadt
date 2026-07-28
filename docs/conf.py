@@ -7,13 +7,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from cdadt import __version__  # noqa: E402
+from cdadt import __version__
 
 # -- Project ----------------------------------------------------------------------------------
 
 project = "cdadt"
 author = "Joey Gould"
-copyright = "2026, Joey Gould"  # noqa: A001 -- Sphinx requires this name
+copyright = "2026, Joey Gould"  # Sphinx requires this name, shadowing the builtin
 release = __version__
 version = __version__
 
