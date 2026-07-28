@@ -1,0 +1,191 @@
+# =============================================================================================
+# Boeing 737-800 -- certification-driven design optimization
+# =============================================================================================
+# Minimizes total mission fuel -- the design mission plus its Part 25 reserves -- over the wing
+# planform and the engine rating, subject to an explicit certification basis.
+#
+# The aircraft, mission and continuation ladder are identical to `b738.yaml`; the only thing
+# this case adds is the `optimization` section. That is the point of putting the design
+# variables and the objective in the case file: two studies that ask different questions of the
+# same aeroplane differ only in data.
+# =============================================================================================
+
+black_box:
+  model: openconcept.examples.B738_sizing:B738SizingMissionAnalysis
+  num_nodes: 11
+
+solver:
+  # Higher than the sizing case's 20. An optimizer visits designs a human would not, and the
+  # coupled solve needs more room at the awkward ones; a failed solve is still an error.
+  maxiter: 50
+  atol: 1.0e-9
+  rtol: 1.0e-9
+  iprint: -1
+  err_on_non_converge: true
+
+aircraft:
+  ac|aero|polar|e: {value: 0.801, source: OpenConcept B738 example estimate}
+  ac|aero|Mach_max: {value: 0.82, source: Boeing 737-800 maximum operating Mach}
+  ac|aero|Vstall_land: {value: 115, units: kn, source: OpenConcept B738_sizing estimate}
+  ac|aero|airfoil_Cl_max: {value: 1.75, source: OpenConcept B738_sizing supercritical airfoil estimate}
+  ac|aero|takeoff_flap_deg: {value: 15, units: deg, source: Boeing 737-800 normal takeoff flap}
+
+  ac|propulsion|engine|rating: {value: 27.0e3, units: lbf, source: CFM56-7B27 sea-level static thrust}
+  ac|propulsion|num_engines: {value: 2, source: Boeing 737-800 configuration}
+
+  ac|geom|wing|S_ref: {value: 124.6, units: m**2, source: b737.org.uk technical specifications}
+  ac|geom|wing|AR: {value: 9.45, source: b737.org.uk technical specifications}
+  ac|geom|wing|c4sweep: {value: 25, units: deg, source: b737.org.uk technical specifications}
+  ac|geom|wing|taper: {value: 0.159, source: b737.org.uk technical specifications}
+  ac|geom|wing|toverc: {value: 0.12, source: OpenConcept B738_sizing estimate}
+
+  ac|geom|hstab|AR: {value: 6.16, source: b737.org.uk technical specifications}
+  ac|geom|hstab|c4sweep: {value: 30, units: deg, source: b737.org.uk technical specifications}
+  ac|geom|hstab|taper: {value: 0.203, source: b737.org.uk technical specifications}
+  ac|geom|hstab|toverc: {value: 0.12, source: OpenConcept B738_sizing estimate}
+
+  ac|geom|vstab|AR: {value: 1.91, source: b737.org.uk technical specifications}
+  ac|geom|vstab|c4sweep: {value: 35, units: deg, source: b737.org.uk technical specifications}
+  ac|geom|vstab|taper: {value: 0.271, source: b737.org.uk technical specifications}
+  ac|geom|vstab|toverc: {value: 0.12, source: OpenConcept B738_sizing estimate}
+
+  ac|geom|fuselage|length: {value: 38.08, units: m, source: b737.org.uk technical specifications}
+  ac|geom|fuselage|height: {value: 3.76, units: m, source: b737.org.uk technical specifications}
+
+  ac|geom|nacelle|length: {value: 4.3, units: m, source: OpenConcept B738_sizing photogrammetry estimate}
+  ac|geom|nacelle|diameter: {value: 2, units: m, source: OpenConcept B738_sizing photogrammetry estimate}
+
+  ac|geom|maingear|length: {value: 1.8, units: m, source: OpenConcept B738_sizing estimate}
+  ac|geom|maingear|num_wheels: {value: 4, source: Boeing 737-800 configuration}
+  ac|geom|maingear|num_shock_struts: {value: 2, source: Boeing 737-800 configuration}
+  ac|geom|nosegear|length: {value: 1.3, units: m, source: OpenConcept B738_sizing estimate}
+  ac|geom|nosegear|num_wheels: {value: 2, source: Boeing 737-800 configuration}
+
+  ac|weights|W_payload: {value: 18.0e3, units: kg, source: OpenConcept B738_sizing design payload}
+  ac|num_passengers_max: {value: 189, source: Boeing 737-800 single-class maximum}
+  ac|num_flight_deck_crew: {value: 2, source: Boeing 737-800 configuration}
+  ac|num_cabin_crew: {value: 4, source: Boeing 737-800 configuration}
+  ac|cabin_pressure: {value: 8.95, units: psi, source: Boeing 737-800 cabin differential}
+
+initial_guesses:
+  ac|weights|MTOW: {value: 50.0e3, units: kg}
+
+mission:
+  parameters:
+    mission_range: {value: 2800, units: nmi}
+    cruise|h0: {value: 35000, units: ft}
+    reserve_range: {value: 200, units: nmi}
+    reserve|h0: {value: 15000, units: ft}
+
+  schedule:
+    climb:
+      Ueas: {value: [230, 252], units: kn}
+      vs: {value: [2300, 400], units: ft/min}
+    cruise:
+      Ueas: {value: [252, 252], units: kn}
+      vs: {value: 0, units: ft/min}
+    descent:
+      Ueas: {value: [252, 250], units: kn}
+      vs: {value: [-1300, -800], units: ft/min}
+    reserve_climb:
+      Ueas: {value: [230, 230], units: kn}
+      vs: {value: [3000, 2300], units: ft/min}
+    reserve_cruise:
+      Ueas: {value: [250, 250], units: kn}
+      vs: {value: 0, units: ft/min}
+    reserve_descent:
+      Ueas: {value: [250, 250], units: kn}
+      vs: {value: [-800, -800], units: ft/min}
+    loiter:
+      Ueas: {value: 250, units: kn}
+      vs: {value: [0, 0], units: ft/min}
+
+  takeoff_speed_guess: {value: 100, units: kn}
+
+  continuation:
+    - description: short range at low altitude, gentle descent
+      parameters:
+        mission_range: {value: 500, units: nmi}
+        cruise|h0: {value: 5000, units: ft}
+        reserve_range: {value: 100, units: nmi}
+        reserve|h0: {value: 1000, units: ft}
+      schedule:
+        descent:
+          Ueas: {value: [252, 250], units: kn}
+          vs: {value: [-800, -800], units: ft/min}
+
+    - description: design range and altitude, still with the gentle descent
+      schedule:
+        descent:
+          Ueas: {value: [252, 250], units: kn}
+          vs: {value: [-800, -800], units: ft/min}
+
+# ---------------------------------------------------------------------------------------------
+# Optimization
+# ---------------------------------------------------------------------------------------------
+optimization:
+
+  driver:
+    # IPOPT, through pyOptSparse, and not SciPy's SLSQP -- for a specific reason. The black box
+    # is a Newton-solved implicit system, and an optimizer exploring a wide design space will
+    # eventually propose a design it cannot converge. OpenMDAO's pyOptSparse driver catches
+    # that, reports the point as failed and lets the optimizer shorten its step. The SciPy
+    # driver re-raises, so a single unconvergeable trial design ends the whole run. SLSQP is
+    # supported and is the code's default because it is always available; for a study of this
+    # width it is the wrong tool.
+    name: IPOPT
+    maxiter: 40
+    tol: 1.0e-6
+    # Few design variables, many vector responses: that is forward mode's case.
+    derivative_mode: fwd
+
+  objective:
+    # Fuel with reserves, not block fuel. Sizing on block fuel designs an aeroplane that
+    # carries no diversion.
+    name: total_fuel
+    units: kg
+    sense: minimize
+    # SLSQP takes its finite-difference step and its convergence test on the *scaled*
+    # objective, so an objective of order 1e4 is converged before it starts without this.
+    ref: 2.0e4
+
+  design_variables:
+    # The bounds are the range over which the empirical weight and drag correlations inside the
+    # black box are defensible for a transport of this class -- not the range over which the
+    # code happens to run.
+    - {name: ac|geom|wing|S_ref, lower: 90.0, upper: 180.0, units: m**2}
+    - {name: ac|geom|wing|AR, lower: 7.0, upper: 13.0}
+    - {name: ac|geom|wing|c4sweep, lower: 15.0, upper: 32.0, units: deg}
+    - {name: ac|geom|wing|taper, lower: 0.12, upper: 0.35}
+    - {name: ac|propulsion|engine|rating, lower: 18.0e3, upper: 34.0e3, units: lbf}
+
+  requirements:
+    - type: balanced_field_length
+      limit: 8000.0
+      units: ft
+      regulation: 14 CFR 25.113
+      source: Design field length, 8000 ft dry runway at sea level, ISA
+
+    - type: engine_out_climb_gradient
+      limit: 0.024
+      units: rad
+      regulation: 14 CFR 25.121(b)(1)(i)
+      source: Two-engine aeroplane, 2.4% second-segment minimum
+
+    - type: throttle_limit
+      phase: climb
+      limit: 1.0
+      regulation: design
+      source: The CFM56 surrogate inside the black box is not fitted above throttle 1
+
+    - type: throttle_limit
+      phase: cruise
+      limit: 1.0
+      regulation: design
+      source: The CFM56 surrogate inside the black box is not fitted above throttle 1
+
+# A `design_range` requirement is deliberately *not* declared here. The black box solves the
+# cruise duration so that the requested range is flown exactly, so the constraint would have
+# identically zero gradient with respect to every design variable -- the optimizer would warn
+# that it cannot be influenced, and it would be right. That the range is actually flown is
+# checked by the validation suite instead, which is where a check with no gradient belongs.
