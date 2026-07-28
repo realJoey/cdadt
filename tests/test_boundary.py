@@ -206,26 +206,97 @@ def test_the_optional_responses_of_the_shipped_case_are_all_available(built_box,
 
 
 # =============================================================================================
-# The one piece of shared mutable state in the package
+# There is no shared mutable state
 # =============================================================================================
 
 
 @pytest.mark.contract
-def test_the_requirement_registry_is_the_only_shared_mutable_state_and_it_is_guarded():
-    """``Requirement.registry`` is a class-level dict, and the only one in cdadt.
+def test_cdadt_has_no_module_level_mutable_state():
+    """No module in the package binds a mutable object at import time.
 
-    Everything else a discipline or an analysis holds is instance state reached through
-    validating properties. The registry is the deliberate exception: it is how a case file can
-    say ``type: balanced_field_length`` and have that resolve to a class, which is what keeps
-    requirement types extensible without a hand-maintained lookup table.
-
-    It is safe for a specific reason rather than by luck. It is written only by
-    ``__init_subclass__``, so it is populated at class-definition time and never during a run;
-    and it refuses a duplicate ``kind``, so a second class cannot silently displace the first.
-    Both properties are asserted here, because "the only mutable global is fine" is a claim that
-    stops being true the moment someone writes to it from a method.
+    ``__all__`` is exempt: it is a list by language convention, is never mutated, and exists to
+    describe the module rather than to hold state.
     """
-    from cdadt.certification import Requirement, RequirementError
+    offenders = []
+    for source in _cdadt_sources():
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        for node in tree.body:
+            targets = (
+                node.targets
+                if isinstance(node, ast.Assign)
+                else ([node.target] if isinstance(node, ast.AnnAssign) else [])
+            )
+            for target in targets:
+                if not isinstance(target, ast.Name) or target.id == "__all__":
+                    continue
+                value = node.value
+                mutable_literal = isinstance(
+                    value, (ast.Dict, ast.List, ast.Set, ast.DictComp, ast.ListComp, ast.SetComp)
+                )
+                mutable_call = (
+                    isinstance(value, ast.Call)
+                    and isinstance(value.func, ast.Name)
+                    and value.func.id in {"dict", "list", "set"}
+                )
+                if mutable_literal or mutable_call:
+                    offenders.append(f"{source.relative_to(PACKAGE.parent)}:{node.lineno} {target.id}")
+
+    assert not offenders, "cdadt must hold no module-level mutable state:\n  " + "\n  ".join(offenders)
+
+
+@pytest.mark.contract
+def test_cdadt_has_no_class_level_mutable_state():
+    """No class in the package carries a mutable class attribute.
+
+    This is the check that removed the last one. An earlier design gave
+    :class:`~cdadt.certification.Requirement` a class-level ``registry`` dict, populated by
+    ``__init_subclass__``. It was convenient and it was shared mutable state: two studies in one
+    process shared it, defining a class anywhere mutated it, and what a case file resolved to
+    depended on what had been imported. It is now
+    :class:`~cdadt.certification.RequirementCatalog`, whose mapping is instance state.
+
+    Immutable class attributes -- the ownership patterns, the response tuples, the shipped
+    requirement tuple -- are the intended way to declare what a class *is*, and are unaffected.
+    """
+    import importlib
+    import inspect
+    import pkgutil
+
+    modules = [cdadt]
+    for info in pkgutil.walk_packages(cdadt.__path__, prefix="cdadt."):
+        modules.append(importlib.import_module(info.name))
+
+    offenders, seen = [], set()
+    for module in modules:
+        for name, obj in vars(module).items():
+            if not inspect.isclass(obj) or not obj.__module__.startswith("cdadt") or obj in seen:
+                continue
+            seen.add(obj)
+            for attribute, value in vars(obj).items():
+                if attribute.startswith("__"):
+                    continue
+                if isinstance(value, (dict, list, set)):
+                    offenders.append(f"{obj.__module__}.{name}.{attribute} = {type(value).__name__}")
+
+    assert not offenders, "cdadt must hold no class-level mutable state:\n  " + "\n  ".join(offenders)
+
+
+@pytest.mark.contract
+def test_the_requirement_catalog_is_instance_state_and_rejects_duplicates():
+    """Two catalogues are independent, and a duplicate ``type`` is refused rather than resolved.
+
+    A registry would have let the later class silently win. A catalogue names both.
+    """
+    from cdadt.certification import (
+        SHIPPED_REQUIREMENTS,
+        BalancedFieldLength,
+        Requirement,
+        RequirementCatalog,
+        RequirementError,
+    )
+
+    assert not hasattr(Requirement, "registry"), "the class-level registry is back"
+    assert isinstance(SHIPPED_REQUIREMENTS, tuple), "the shipped set must be immutable"
 
     shipped = {
         "balanced_field_length",
@@ -235,34 +306,23 @@ def test_the_requirement_registry_is_the_only_shared_mutable_state_and_it_is_gua
         "design_range",
         "response_limit",
     }
-    assert set(Requirement.registry) == shipped, "the shipped requirement types have changed"
+    assert set(RequirementCatalog()) == shipped
 
-    # Nothing but __init_subclass__ may write to it.
-    writers = []
-    for source in _cdadt_sources():
-        tree = ast.parse(source.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Attribute) or node.attr != "registry":
-                continue
-            if isinstance(node.ctx, (ast.Store, ast.Del)):
-                writers.append(f"{source.name}:{node.lineno}")
-        for node in ast.walk(tree):
-            # registry[...] = ... and registry.update(...) both count as writes
-            if isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Store):
-                target = node.value
-                if isinstance(target, ast.Attribute) and target.attr == "registry":
-                    enclosing = [
-                        n.name
-                        for n in ast.walk(tree)
-                        if isinstance(n, ast.FunctionDef) and node.lineno in range(n.lineno, n.end_lineno + 1)
-                    ]
-                    if "__init_subclass__" not in enclosing:
-                        writers.append(f"{source.name}:{node.lineno} writes registry outside __init_subclass__")
-    assert not writers, "the requirement registry is written from somewhere unexpected: " + ", ".join(writers)
+    class Extra(Requirement):
+        kind = "extra_requirement"
+        response = "MTOW"
+        sense = "upper"
+        title = "An extra requirement"
 
-    # A duplicate kind must be refused rather than silently replacing the incumbent.
+    # Defining a class changes nothing until a catalogue is asked to include it.
+    assert "extra_requirement" not in RequirementCatalog()
+    wider = RequirementCatalog([*SHIPPED_REQUIREMENTS, Extra])
+    assert "extra_requirement" in wider
+    assert set(RequirementCatalog()) == shipped, "a wider catalogue perturbed the default one"
+
+    class Clashing(Requirement):
+        kind = "balanced_field_length"
+        response = "takeoff_field_length"
+
     with pytest.raises(RequirementError, match="both call themselves"):
-
-        class Duplicate(Requirement):
-            kind = "balanced_field_length"
-            response = "takeoff_field_length"
+        RequirementCatalog([BalancedFieldLength, Clashing])

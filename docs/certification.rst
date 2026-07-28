@@ -151,8 +151,8 @@ record per requirement, so a study is archivable without re-running it.
 Adding a requirement
 --------------------
 
-Subclass :class:`~cdadt.certification.Requirement`. Declaring ``kind`` registers it, and the
-case file can name it immediately:
+Subclass :class:`~cdadt.certification.Requirement`, then include it in a
+:class:`~cdadt.certification.RequirementCatalog` so a case file can name it:
 
 .. code-block:: python
 
@@ -168,6 +168,19 @@ case file can name it immediately:
        response: ClassVar[str] = "total_fuel"
        sense: ClassVar[str] = "lower"
        title: ClassVar[str] = "Fuel with reserves"
+
+.. code-block:: python
+
+   from cdadt import Optimizer, RequirementCatalog, SHIPPED_REQUIREMENTS
+
+   catalog = RequirementCatalog([*SHIPPED_REQUIREMENTS, ReserveFuelFraction])
+   optimizer = Optimizer(analysis, requirements=catalog)
+
+Defining the class is not enough on its own, and that is deliberate. An earlier design registered
+subclasses automatically into a class-level dictionary, which made the set of available
+requirements depend on what had been imported and let one study's classes leak into another's.
+The catalogue is instance state: a study owns its own, and two are independent. See
+:doc:`architecture`.
 
 The class fixes the physics -- which response tests the requirement and which way the inequality
 runs -- and leaves the number, its regulation and its source to the case file. That division is

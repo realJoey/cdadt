@@ -10,6 +10,7 @@ from cdadt import (
     CertificationBasis,
     EngineOutClimbGradient,
     Requirement,
+    RequirementCatalog,
     RequirementError,
     RequirementSpec,
     ResponseCatalog,
@@ -88,10 +89,11 @@ def test_a_response_limit_must_say_what_it_limits():
 
 
 @pytest.mark.unit
-def test_every_shipped_requirement_registers_itself_under_its_type():
-    """The case file names a requirement by ``type``; the registry is how that resolves."""
+def test_every_shipped_requirement_is_available_under_its_type():
+    """The case file names a requirement by ``type``; the catalogue is how that resolves."""
+    catalog = RequirementCatalog()
     for kind in ("balanced_field_length", "engine_out_climb_gradient", "throttle_limit", "response_limit"):
-        assert kind in Requirement.registry
+        assert kind in catalog
 
 
 @pytest.mark.unit

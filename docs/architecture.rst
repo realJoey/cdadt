@@ -180,28 +180,44 @@ design variable is a message with suggestions rather than an OpenMDAO error thro
 whichever few a caller asked for. That is what makes a run report complete and two runs
 comparable without re-running either.
 
-The one piece of shared mutable state
---------------------------------------
+There is no shared mutable state
+--------------------------------
 
-There is exactly one, and it is named here rather than left for a reader to find:
-:attr:`cdadt.certification.Requirement.registry`, a class-level dictionary mapping each
-requirement's ``kind`` to its class.
+Not as an aspiration -- as a property the suite enforces. Two contract tests parse and walk the
+whole package:
 
-It exists so that a case file can say ``type: balanced_field_length`` and have that resolve
-without a hand-maintained lookup table that would drift out of step with the classes. It is safe
-for specific, checked reasons rather than by convention:
+``test_cdadt_has_no_module_level_mutable_state``
+    No module binds a mutable object at import time. ``__all__`` is exempt: it is a list by
+    language convention, is never mutated, and describes the module rather than holding state.
 
-- it is written **only** by ``__init_subclass__``, so it is populated at class-definition time
-  and never during a run;
-- it **refuses a duplicate** ``kind``, so a second class cannot silently displace the first.
+``test_cdadt_has_no_class_level_mutable_state``
+    No class carries a mutable class attribute. Immutable class attributes -- the ownership
+    patterns, the response tuples, :data:`~cdadt.certification.SHIPPED_REQUIREMENTS` -- are the
+    intended way to declare what a class *is*, and are unaffected.
 
-Both are asserted by ``test_the_requirement_registry_is_the_only_shared_mutable_state_and_it_is_guarded``,
-which also parses the package to confirm nothing writes to the registry from anywhere else. An
-audit of the whole package found no other module-level or class-level mutable state: everything
-a discipline, an aircraft or an analysis holds is instance state reached through properties that
-validate what they are given.
+Everything a discipline, an aircraft, a mission or an analysis holds is instance state, reached
+through properties that validate what they are given.
 
-The only module-level *functions* in the package are argument parsing in
-:mod:`cdadt.cli` and case-file validation helpers in :mod:`cdadt.config`. Neither performs a
-discipline calculation -- there are none to perform in cdadt, because the physics is inside the
-black box.
+**This cost a design change, which is the point of testing it.** An earlier version gave
+:class:`~cdadt.certification.Requirement` a class-level ``registry`` dictionary, populated by
+``__init_subclass__``, so that declaring a subclass made its ``kind`` nameable in a case file.
+Convenient, and shared mutable state: two studies in one process shared one registry, defining a
+class anywhere mutated it, and what a case file resolved to depended on what happened to have
+been imported. It is now :class:`~cdadt.certification.RequirementCatalog`, which holds the same
+mapping as *instance* state:
+
+.. code-block:: python
+
+   from cdadt import RequirementCatalog, SHIPPED_REQUIREMENTS
+
+   default = RequirementCatalog()                                   # the shipped types
+   wider = RequirementCatalog([*SHIPPED_REQUIREMENTS, MyRequirement])  # plus your own
+   Optimizer(analysis, requirements=wider)
+
+Two catalogues are independent, a duplicate ``type`` is refused by name rather than resolved by
+letting the later class win, and defining a requirement class changes nothing until a catalogue
+is asked to include it.
+
+The only module-level *functions* in the package are argument parsing in :mod:`cdadt.cli` and
+case-file validation helpers in :mod:`cdadt.config`. Neither performs a discipline calculation --
+there are none to perform in cdadt, because the physics is inside the black box.

@@ -15,12 +15,14 @@ from cdadt.aircraft import Aircraft, AircraftError
 from cdadt.analysis import SizingAnalysis
 from cdadt.blackbox import BlackBoxError, OpenConceptSizingBox, SolverSettings, VariableInfo
 from cdadt.certification import (
+    SHIPPED_REQUIREMENTS,
     BalancedFieldLength,
     CertificationBasis,
     DesignRange,
     EngineOutClimbGradient,
     MaximumTakeoffWeight,
     Requirement,
+    RequirementCatalog,
     RequirementError,
     RequirementResult,
     ResponseLimit,
@@ -58,6 +60,7 @@ __version__ = "0.2.0"
 
 __all__ = [
     "AIRCRAFT_DISCIPLINES",
+    "SHIPPED_REQUIREMENTS",
     "Aerodynamics",
     "Aircraft",
     "AircraftError",
@@ -88,6 +91,7 @@ __all__ = [
     "PhaseSchedule",
     "Propulsion",
     "Requirement",
+    "RequirementCatalog",
     "RequirementError",
     "RequirementResult",
     "RequirementSpec",

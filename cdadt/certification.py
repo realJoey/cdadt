@@ -26,7 +26,7 @@ lists what is and is not reachable, and :doc:`/validation` states the consequenc
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from typing import Any, ClassVar
 
 import numpy as np
@@ -36,12 +36,14 @@ from cdadt.config import RequirementSpec
 from cdadt.results import ResponseCatalog
 
 __all__ = [
+    "SHIPPED_REQUIREMENTS",
     "BalancedFieldLength",
     "CertificationBasis",
     "DesignRange",
     "EngineOutClimbGradient",
     "MaximumTakeoffWeight",
     "Requirement",
+    "RequirementCatalog",
     "RequirementError",
     "RequirementResult",
     "ResponseLimit",
@@ -154,8 +156,8 @@ class Requirement:
     Attributes
     ----------
     kind : str
-        The name a case file uses in ``type:``. Set by each subclass, and registered
-        automatically so that :meth:`from_spec` can find it.
+        The name a case file uses in ``type:``. A :class:`RequirementCatalog` maps it to the
+        class.
     response : str
         The catalogued response this requirement is evaluated on.
     sense : str
@@ -163,10 +165,16 @@ class Requirement:
         below it.
     title : str
         One line naming the requirement in a traceability matrix.
-    """
 
-    #: Every subclass, by the name a case file uses. Populated by ``__init_subclass__``.
-    registry: ClassVar[dict[str, type[Requirement]]] = {}
+    Notes
+    -----
+    There is deliberately no class-level registry here, and no ``__init_subclass__`` that writes
+    to one. A registry populated at import time is shared mutable state: two studies in one
+    process share it, defining a class anywhere mutates it, and what a case file resolves to
+    depends on what has been imported. :class:`RequirementCatalog` holds the same mapping as
+    instance state instead, so a study's set of available requirements is something it owns and
+    can be handed a different value of.
+    """
 
     kind: ClassVar[str] = ""
     response: ClassVar[str] = ""
@@ -175,15 +183,6 @@ class Requirement:
 
     #: Option keys this requirement understands, beyond the shared ones.
     option_keys: ClassVar[tuple[str, ...]] = ()
-
-    def __init_subclass__(cls, **kwargs: Any) -> None:
-        """Register the subclass under its ``kind`` so a case file can name it."""
-        super().__init_subclass__(**kwargs)
-        if not cls.kind:
-            return
-        if cls.kind in Requirement.registry and Requirement.registry[cls.kind] is not cls:
-            raise RequirementError(f"Two requirement classes both call themselves '{cls.kind}'.")
-        Requirement.registry[cls.kind] = cls
 
     def __init__(
         self,
@@ -215,27 +214,24 @@ class Requirement:
     # -- construction --------------------------------------------------------------------
 
     @classmethod
-    def from_spec(cls, spec: RequirementSpec) -> Requirement:
+    def from_spec(cls, spec: RequirementSpec, catalog: RequirementCatalog | None = None) -> Requirement:
         """Build the requirement a case file's entry describes.
+
+        Parameters
+        ----------
+        spec : RequirementSpec
+            The case file's entry.
+        catalog : RequirementCatalog, optional
+            Which requirement classes are available. Defaults to a fresh catalogue of the
+            shipped ones -- fresh, rather than a shared instance, so that nothing a caller does
+            to it can affect anybody else.
 
         Raises
         ------
         RequirementError
             If no requirement class answers to that ``type``.
         """
-        try:
-            requirement_class = Requirement.registry[spec.kind]
-        except KeyError:
-            raise RequirementError(
-                f"'{spec.kind}' is not a requirement cdadt knows. Available: {sorted(Requirement.registry)}."
-            ) from None
-        return requirement_class(
-            limit=spec.limit,
-            regulation=spec.regulation,
-            source=spec.source,
-            units=spec.units,
-            options=spec.options,
-        )
+        return (catalog if catalog is not None else RequirementCatalog()).build(spec)
 
     # -- state ---------------------------------------------------------------------------
 
@@ -513,6 +509,110 @@ class ResponseLimit(Requirement):
 
 
 # =============================================================================================
+# The catalogue of available requirement types
+# =============================================================================================
+
+#: The requirement classes cdadt ships, in the order a reference table lists them. An immutable
+#: tuple rather than a mutable registry: it is read to build a catalogue and never written.
+SHIPPED_REQUIREMENTS: tuple[type[Requirement], ...] = (
+    BalancedFieldLength,
+    EngineOutClimbGradient,
+    ThrottleLimit,
+    MaximumTakeoffWeight,
+    DesignRange,
+    ResponseLimit,
+)
+
+
+class RequirementCatalog:
+    """Which requirement types a study may name in its case file.
+
+    Holds the mapping from the ``type:`` a case file writes to the class that implements it.
+    Deliberately an *object* rather than a class-level registry: a registry populated at import
+    time is shared mutable state, and it makes what a case file resolves to depend on what has
+    happened to be imported. A catalogue is owned by the study that uses it, can be handed a
+    different set of classes, and cannot be perturbed from a distance.
+
+    Parameters
+    ----------
+    requirements : sequence of type, optional
+        Requirement classes to offer. Defaults to :data:`SHIPPED_REQUIREMENTS`. Extending is a
+        matter of passing a longer sequence -- see :doc:`/tutorials`.
+
+    Raises
+    ------
+    RequirementError
+        If a class declares no ``kind``, or if two declare the same one. The second is what a
+        registry would have resolved silently by letting the later class win.
+
+    Examples
+    --------
+    >>> catalog = RequirementCatalog()
+    >>> sorted(catalog)
+    ['balanced_field_length', 'design_range', 'engine_out_climb_gradient', ...]
+    >>> catalog = RequirementCatalog([*SHIPPED_REQUIREMENTS, MyRequirement])
+    """
+
+    def __init__(self, requirements: Sequence[type[Requirement]] | None = None) -> None:
+        classes = tuple(requirements) if requirements is not None else SHIPPED_REQUIREMENTS
+        by_kind: dict[str, type[Requirement]] = {}
+        for requirement_class in classes:
+            kind = getattr(requirement_class, "kind", "")
+            if not kind:
+                raise RequirementError(
+                    f"{requirement_class.__name__} declares no 'kind', so no case file could name it."
+                )
+            if kind in by_kind and by_kind[kind] is not requirement_class:
+                raise RequirementError(
+                    f"Two requirement classes both call themselves '{kind}': "
+                    f"{by_kind[kind].__name__} and {requirement_class.__name__}."
+                )
+            by_kind[kind] = requirement_class
+        self._by_kind = by_kind
+
+    def __contains__(self, kind: str) -> bool:
+        """Return whether a requirement of that ``type`` is available."""
+        return kind in self._by_kind
+
+    def __iter__(self) -> Iterator[str]:
+        """Iterate the available ``type`` names."""
+        return iter(self._by_kind)
+
+    def __len__(self) -> int:
+        """Return how many requirement types are available."""
+        return len(self._by_kind)
+
+    def requirement_class(self, kind: str) -> type[Requirement]:
+        """Return the class a case file's ``type`` names.
+
+        Raises
+        ------
+        RequirementError
+            Listing what is available, so a typo does not require reading the source to fix.
+        """
+        try:
+            return self._by_kind[kind]
+        except KeyError:
+            raise RequirementError(
+                f"'{kind}' is not a requirement cdadt knows. Available: {sorted(self._by_kind)}."
+            ) from None
+
+    def build(self, spec: RequirementSpec) -> Requirement:
+        """Build the requirement a case file's entry describes."""
+        return self.requirement_class(spec.kind)(
+            limit=spec.limit,
+            regulation=spec.regulation,
+            source=spec.source,
+            units=spec.units,
+            options=spec.options,
+        )
+
+    def __repr__(self) -> str:
+        """Return a representation naming how many types are available."""
+        return f"RequirementCatalog({len(self._by_kind)} types)"
+
+
+# =============================================================================================
 # The basis
 # =============================================================================================
 
@@ -546,9 +646,21 @@ class CertificationBasis:
             raise RequirementError(f"More than one requirement is named {duplicates}.")
 
     @classmethod
-    def from_specs(cls, specs: Sequence[RequirementSpec]) -> CertificationBasis:
-        """Build the basis a case file's ``requirements`` list describes."""
-        return cls([Requirement.from_spec(spec) for spec in specs])
+    def from_specs(
+        cls, specs: Sequence[RequirementSpec], catalog: RequirementCatalog | None = None
+    ) -> CertificationBasis:
+        """Build the basis a case file's ``requirements`` list describes.
+
+        Parameters
+        ----------
+        specs : sequence of RequirementSpec
+            The case file's ``requirements`` entries.
+        catalog : RequirementCatalog, optional
+            Which requirement types are available. Defaults to the shipped ones. Pass a wider
+            catalogue to make a study's own requirement classes nameable in its case file.
+        """
+        catalog = catalog if catalog is not None else RequirementCatalog()
+        return cls([catalog.build(spec) for spec in specs])
 
     def __len__(self) -> int:
         """Return the number of requirements."""

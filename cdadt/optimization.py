@@ -29,7 +29,7 @@ import openmdao.api as om
 
 from cdadt.analysis import SizingAnalysis
 from cdadt.blackbox import OpenConceptSizingBox
-from cdadt.certification import CertificationBasis, RequirementResult
+from cdadt.certification import CertificationBasis, RequirementCatalog, RequirementResult
 from cdadt.config import OptimizationConfig
 from cdadt.results import ResponseCatalog, SizingResults
 
@@ -146,6 +146,9 @@ class Optimizer:
     ----------
     analysis : SizingAnalysis
         The sizing analysis to optimize. Its case file must declare an ``optimization`` section.
+    requirements : RequirementCatalog, optional
+        Which requirement types the case file may name. Defaults to the shipped ones. Pass a
+        wider catalogue to make a study's own requirement classes nameable.
 
     Raises
     ------
@@ -160,7 +163,7 @@ class Optimizer:
     >>> print(optimizer.report(outcome))
     """
 
-    def __init__(self, analysis: SizingAnalysis) -> None:
+    def __init__(self, analysis: SizingAnalysis, requirements: RequirementCatalog | None = None) -> None:
         settings = analysis.config.optimization
         if settings is None:
             raise OptimizationError(
@@ -170,7 +173,8 @@ class Optimizer:
         self._analysis = analysis
         self._settings: OptimizationConfig = settings
         self._catalog: ResponseCatalog = analysis.catalog
-        self._basis = CertificationBasis.from_specs(settings.requirements)
+        self._requirements = requirements if requirements is not None else RequirementCatalog()
+        self._basis = CertificationBasis.from_specs(settings.requirements, catalog=self._requirements)
         self._validate()
 
     # -- checking ------------------------------------------------------------------------
@@ -205,6 +209,11 @@ class Optimizer:
     def settings(self) -> OptimizationConfig:
         """The optimization section of the case file."""
         return self._settings
+
+    @property
+    def requirements(self) -> RequirementCatalog:
+        """The catalogue of requirement types this study's case file may name."""
+        return self._requirements
 
     @property
     def basis(self) -> CertificationBasis:

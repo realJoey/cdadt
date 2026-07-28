@@ -129,9 +129,22 @@ cannot be got wrong:
        sense: ClassVar[str] = "upper"
        title: ClassVar[str] = "Maximum landing weight within the structural limit"
 
-Declaring ``kind`` registers it; ``type: maximum_landing_weight`` works in a case file from that
-point on. The class fixes the physics and leaves the number, its regulation and its source to
-the case. See :doc:`certification`.
+Then hand the optimizer a catalogue that includes it, and ``type: maximum_landing_weight`` works
+in a case file:
+
+.. code-block:: python
+
+   from cdadt import Optimizer, RequirementCatalog, SHIPPED_REQUIREMENTS
+
+   optimizer = Optimizer(
+       analysis,
+       requirements=RequirementCatalog([*SHIPPED_REQUIREMENTS, MaximumLandingWeight]),
+   )
+
+The class fixes the physics and leaves the number, its regulation and its source to the case.
+The catalogue step is deliberate rather than automatic: registering subclasses on definition
+would be shared mutable state, which the package does not have and the suite forbids. See
+:doc:`architecture` and :doc:`certification`.
 
 If the quantity you need is *not* something the black box publishes, stop. Adding a calculation
 to cdadt to produce it is exactly what the boundary exists to prevent; the gap belongs in
