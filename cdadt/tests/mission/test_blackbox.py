@@ -203,7 +203,6 @@ def converged_mission():
 
 
 @pytest.mark.integration
-@pytest.mark.slow
 def test_the_mission_converges_and_every_declared_output_is_finite(converged_mission):
     """Reading the full declared output set returns finite numbers after a run."""
     blackbox, prob = converged_mission
@@ -215,7 +214,6 @@ def test_the_mission_converges_and_every_declared_output_is_finite(converged_mis
 
 
 @pytest.mark.integration
-@pytest.mark.slow
 def test_fuel_accumulates_monotonically_across_the_phases(converged_mission):
     """Fuel burned only ever increases, and the reserve mission adds to the block fuel.
 
@@ -242,7 +240,6 @@ def test_fuel_accumulates_monotonically_across_the_phases(converged_mission):
 
 
 @pytest.mark.integration
-@pytest.mark.slow
 def test_the_balanced_field_length_is_balanced(converged_mission):
     """Continue and abort distances match, which is what V1 is solved to achieve.
 
@@ -264,7 +261,6 @@ def test_the_balanced_field_length_is_balanced(converged_mission):
 
 
 @pytest.mark.integration
-@pytest.mark.slow
 def test_the_flown_range_closes_on_the_requested_range(converged_mission):
     """Distance flown by end of descent equals the requested design range.
 
@@ -281,7 +277,6 @@ def test_the_flown_range_closes_on_the_requested_range(converged_mission):
 
 
 @pytest.mark.integration
-@pytest.mark.slow
 def test_the_engine_out_climb_gradient_is_available_and_positive(converged_mission):
     """The 25.121 climb angle is read from the mission, and the aircraft climbs on one engine."""
     blackbox, prob = converged_mission
@@ -290,7 +285,6 @@ def test_the_engine_out_climb_gradient_is_available_and_positive(converged_missi
 
 
 @pytest.mark.integration
-@pytest.mark.slow
 def test_the_decision_speed_lies_below_the_rotation_speed(converged_mission):
     """V1 <= V_R, as it must be for the takeoff decision to be physically meaningful."""
     blackbox, prob = converged_mission
@@ -299,7 +293,6 @@ def test_the_decision_speed_lies_below_the_rotation_speed(converged_mission):
 
 
 @pytest.mark.integration
-@pytest.mark.slow
 def test_setting_the_profile_reaches_every_scheduled_phase(converged_mission):
     """The airspeed and vertical-speed vectors OpenConcept flies are the ones requested."""
     blackbox, prob = converged_mission

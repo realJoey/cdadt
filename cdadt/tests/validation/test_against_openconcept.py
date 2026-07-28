@@ -65,7 +65,6 @@ def cdadt_matched_to_reference(b738_config):
 # Against OpenConcept's published golden values
 # ==============================================================================
 @pytest.mark.validation
-@pytest.mark.slow
 @pytest.mark.parametrize("quantity", sorted(OPENCONCEPT_GOLDENS_LBM))
 def test_matches_openconcepts_published_goldens(cdadt_matched_to_reference, quantity):
     """cdadt reproduces the numbers OpenConcept's own test suite asserts.
@@ -139,7 +138,6 @@ COMPARISONS = [
 
 
 @pytest.mark.validation
-@pytest.mark.slow
 @pytest.mark.parametrize(
     ("name", "reference_path", "units", "tolerance"),
     COMPARISONS,
@@ -164,7 +162,6 @@ def test_matches_a_live_reference_run(
 
 
 @pytest.mark.validation
-@pytest.mark.slow
 def test_the_engine_out_climb_gradient_differs_by_design(cdadt_matched_to_reference, openconcept_reference):
     """cdadt's engine-out climb gradient is lower than the reference's, and should be.
 
@@ -199,7 +196,6 @@ def test_the_engine_out_climb_gradient_differs_by_design(cdadt_matched_to_refere
 
 
 @pytest.mark.validation
-@pytest.mark.slow
 def test_the_engine_out_phase_is_flown_in_takeoff_configuration():
     """The mission contract marks the engine-out climb phase as takeoff configuration.
 
@@ -215,7 +211,6 @@ def test_the_engine_out_phase_is_flown_in_takeoff_configuration():
 
 
 @pytest.mark.validation
-@pytest.mark.slow
 def test_the_comparison_covers_the_quantities_that_define_the_aircraft(cdadt_matched_to_reference):
     """The compared set includes weights, fuel, field length and the climb gradient.
 

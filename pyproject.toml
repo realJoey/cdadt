@@ -64,7 +64,11 @@ markers = [
     "integration: builds and runs an assembled multi-discipline model",
     "validation: compares cdadt results against an external reference or hand calculation",
     "regression: pins a previously converged result against drift",
-    "slow: takes more than a few seconds; excluded from the fast loop",
+    # Reserved for tests measured in minutes. The IPOPT optimization run is 98% of the
+    # suite's wall clock; everything else totals about 25 s. Marking merely-slow-ish tests
+    # here would push the OpenConcept validation gate out of the fast loop to save seconds,
+    # which is the wrong trade.
+    "slow: takes minutes; excluded from the fast loop",
 ]
 addopts = "--strict-markers"
 
