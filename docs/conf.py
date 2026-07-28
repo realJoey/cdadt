@@ -30,9 +30,21 @@ intersphinx_mapping = {
 templates_path = ["_templates"]
 exclude_patterns = ["_build"]
 
+# Cross-references to things Sphinx cannot resolve are treated as errors (the docs build
+# with -W), with these exceptions:
+#   - OpenConcept publishes no intersphinx inventory, so none of its classes resolve.
+#   - OpenMDAO's inventory does not cover every internal class path referenced here.
+#   - cdadt.tests is not autodoc'd; test modules are referenced by name so a reader knows
+#     which file enforces a stated rule.
+nitpick_ignore_regex = [
+    ("py:.*", r"openconcept\..*"),
+    ("py:.*", r"openmdao\..*"),
+    ("py:.*", r"cdadt\.tests\..*"),
+]
+
 try:
     from sphinx_mdolab_theme.config import *  # noqa: F401,F403  (matches OpenConcept's docs)
 except ImportError:
     html_theme = "alabaster"
 
-html_static_path = []
+html_static_path = ["_static"]

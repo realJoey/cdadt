@@ -29,7 +29,7 @@ high-fidelity aerostructural analysis satisfy the same interface.
 climb, cruise, descent, Part 25 reserves, and loiter -- is supplied by
 `OpenConcept <https://github.com/mdolab/openconcept>`_. cdadt consumes it through a single
 boundary class and **never modifies OpenConcept**. What that boundary is, and why it is a
-contract rather than a wall, is documented in ``docs/blackbox.rst``.
+contract rather than a wall, is documented in :ref:`blackbox`.
 
 **Nothing is claimed that is not verified.** Every test in cdadt states which class of
 claim it makes. Results are validated against the OpenConcept reference implementation and
@@ -46,6 +46,7 @@ against published hand calculations; see :ref:`verification`.
    :caption: Framework
 
    architecture
+   blackbox
 
 .. toctree::
    :maxdepth: 2

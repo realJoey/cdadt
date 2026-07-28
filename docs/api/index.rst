@@ -8,3 +8,4 @@ API reference
    :maxdepth: 2
 
    core
+   mission
