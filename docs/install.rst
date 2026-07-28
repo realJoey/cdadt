@@ -13,9 +13,9 @@ The environment
 
 .. code-block:: bash
 
-   conda create -y -n cdadt_env -c conda-forge python=3.11 numpy scipy matplotlib \
-       openmdao pyoptsparse ipopt cyipopt pytest pytest-cov pyyaml sphinx numpydoc
-   conda install -y -n cdadt_env -c conda-forge "libblas=*=*openblas"
+   conda create -y -n cdadt_env -c conda-forge python=3.11 "numpy<2" scipy matplotlib \
+       openmdao pyoptsparse ipopt cyipopt pytest pytest-cov pyyaml sphinx numpydoc \
+       packaging black ruff "libblas=*=*openblas"
    conda activate cdadt_env
    pip install sphinx_mdolab_theme
 
@@ -54,11 +54,17 @@ local clone and without dependency resolution**:
 Both flags are deliberate.
 
 ``--no-deps``
-   OpenConcept's ``setup.py`` declares ``numpy >=1.20, <2``. Without ``--no-deps`` pip acts
-   on that bound and downgrades NumPy underneath the conda-forge stack, which breaks the
-   compiled ``pyoptsparse``/IPOPT extensions that were built against the conda NumPy ABI.
-   cdadt's own dependencies are installed by conda beforehand, so there is nothing for pip
-   to resolve.
+   cdadt's dependencies are installed by conda beforehand, so there is nothing for pip to
+   resolve, and letting pip re-resolve them can replace conda-forge builds with PyPI wheels
+   that carry their own BLAS.
+
+   **This flag does not license ignoring OpenConcept's version bounds.** It declares
+   ``numpy >=1.20, <2``, and the conda environment above satisfies that bound deliberately.
+   An earlier version of this project installed NumPy 2 with ``--no-deps`` and then spent
+   considerable effort concluding that OpenConcept had a defect, because its own B738 test
+   failed. It did not: the environment was wrong. Under NumPy 2, OpenConcept's parasite drag
+   buildup evaluates ``log(0.06 Re)`` and ``sqrt(Re)`` at the first nodes of its ground roll
+   and the solver reaches ``NaN``; under NumPy 1.26 the same test passes.
 
 ``-e`` from a local clone
    The editable install points Python at the working clone rather than a copy, so any
@@ -81,6 +87,13 @@ The environment is not considered working until its gate tests pass:
 .. code-block:: bash
 
    pytest cdadt/tests/test_environment.py cdadt/tests/test_openconcept_integrity.py -v
+
+The strongest single check is OpenConcept's own test suite. If the dependency cannot pass
+its own tests, nothing built on it can be trusted:
+
+.. code-block:: bash
+
+   pytest ../openconcept/openconcept/examples/tests/test_example_aircraft.py -k B738Sizing -v
 
 These tests do more than check imports. They
 

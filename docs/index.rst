@@ -40,6 +40,7 @@ against published hand calculations; see :ref:`verification`.
    :caption: Getting started
 
    install
+   tutorials
 
 .. toctree::
    :maxdepth: 2
@@ -55,6 +56,7 @@ against published hand calculations; see :ref:`verification`.
    :caption: Verification and validation
 
    verification
+   validation
 
 .. toctree::
    :maxdepth: 2

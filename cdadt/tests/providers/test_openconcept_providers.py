@@ -96,6 +96,15 @@ def _run_provider(provider, inputs, flight_phase="cruise", num_nodes=1, config=N
         ),
         promotes=["*"],
     )
+
+    # Declare the inputs above the group, before setup. Built in isolation a provider has no
+    # sibling disciplines feeding it, and where two wrapped OpenConcept components declare
+    # different placeholder values for the same promoted input, OpenMDAO refuses to pick one
+    # -- correctly. Inside an assembled model those inputs have a source and the question
+    # does not arise.
+    for name, (value, units) in inputs.items():
+        prob.model.set_input_defaults(name, val=value, units=units)
+
     prob.setup(check=False)
     for name, (value, units) in inputs.items():
         prob.set_val(name, value, units=units)
@@ -546,9 +555,17 @@ def test_engine_deck_is_reported_in_the_reference(b738_config):
 def test_landing_weight_uses_the_configured_fraction(b738_config):
     """Maximum landing mass is the configured fraction of MTOW, not a built-in 0.8."""
     config = b738_config.with_overrides({"ac|weights|MLW_fraction_of_MTOW": 0.85})
+    # The tail areas are supplied explicitly. Built in isolation this provider has no
+    # stability discipline feeding them, and two components inside OpenConcept's
+    # empty-weight buildup declare different placeholder values for the same promoted
+    # input, which OpenMDAO refuses to resolve on its own.
     prob = _run_provider(
         JetTransportEmptyWeightProvider(config),
-        {"ac|weights|MTOW": (80000.0, "kg")},
+        {
+            "ac|weights|MTOW": (80000.0, "kg"),
+            "ac|geom|hstab|S_ref": (27.9, "m**2"),
+            "ac|geom|vstab|S_ref": (20.2, "m**2"),
+        },
         config=config,
     )
     assert prob.get_val("ac|weights|MLW", units="kg").item() == pytest.approx(0.85 * 80000.0)

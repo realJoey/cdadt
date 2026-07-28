@@ -441,7 +441,11 @@ certification:
 # jet-transport weight buildup was derived from, and the model would still return a number.
 optimization:
   max_iterations:
-    value: 60
+    value: 250
+    source: >-
+      Enough headroom that IPOPT certifies optimality rather than exiting on the limit.
+      At 60 it reached the same design but exited "Maximum Iterations Exceeded", which
+      is not an optimum and is not reported as one.
   tolerance:
     value: 1.0e-6
 

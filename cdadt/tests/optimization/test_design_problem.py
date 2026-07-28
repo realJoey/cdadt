@@ -307,10 +307,13 @@ def test_the_optimum_has_not_drifted(optimized_b738):
         "ac|geom|wing|taper": 0.2467,
         "ac|propulsion|engine|rating": 22184.8,
     }
+    # Design variables are pinned at 1% and the objective at 0.1%. The optimum is flat in
+    # taper -- two solver paths that agree on the objective to five figures land 0.5% apart
+    # in taper -- so a tighter pin on the variables would report optimizer noise as drift.
     drifted = {
         name: (expected, result.design_variables[name])
         for name, expected in golden.items()
-        if result.design_variables[name] != pytest.approx(expected, rel=1e-3)
+        if result.design_variables[name] != pytest.approx(expected, rel=1e-2)
     }
     assert not drifted, f"Optimum has drifted (expected, actual): {drifted}"
     assert result.objective_value == pytest.approx(17164.3, rel=1e-3)
