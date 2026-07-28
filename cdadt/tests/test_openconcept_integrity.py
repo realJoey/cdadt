@@ -74,10 +74,9 @@ def test_cdadt_does_not_monkey_patch_openconcept():
                 for alias in node.names:
                     if alias.name.split(".")[0] == "openconcept":
                         openconcept_names.add(alias.asname or alias.name.split(".")[0])
-            elif isinstance(node, ast.ImportFrom):
-                if node.module and node.module.split(".")[0] == "openconcept":
-                    for alias in node.names:
-                        openconcept_names.add(alias.asname or alias.name)
+            elif isinstance(node, ast.ImportFrom) and node.module and node.module.split(".")[0] == "openconcept":
+                for alias in node.names:
+                    openconcept_names.add(alias.asname or alias.name)
 
         if not openconcept_names:
             continue

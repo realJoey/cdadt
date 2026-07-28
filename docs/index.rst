@@ -43,9 +43,21 @@ against published hand calculations; see :ref:`verification`.
 
 .. toctree::
    :maxdepth: 2
+   :caption: Framework
+
+   architecture
+
+.. toctree::
+   :maxdepth: 2
    :caption: Verification and validation
 
    verification
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Reference
+
+   api/index
 
 Indices
 =======

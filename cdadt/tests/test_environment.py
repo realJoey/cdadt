@@ -33,9 +33,9 @@ def test_openmdao_available_at_required_version():
     import openmdao
     from packaging.version import Version
 
-    assert Version(openmdao.__version__) >= Version("3.21"), (
-        f"cdadt requires openmdao>=3.21 (OpenConcept's own floor); found {openmdao.__version__}"
-    )
+    assert Version(openmdao.__version__) >= Version(
+        "3.21"
+    ), f"cdadt requires openmdao>=3.21 (OpenConcept's own floor); found {openmdao.__version__}"
 
 
 def test_openconcept_importable_and_mission_builds():
