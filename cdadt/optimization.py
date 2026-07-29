@@ -177,7 +177,7 @@ class Optimizer:
         Done against a cheaply built probe rather than the real model, so a misspelled name
         costs a fraction of a second instead of failing inside ``setup``.
         """
-        probe = OpenConceptSizingBox.describe(self._config.black_box.model)
+        probe = OpenConceptSizingBox.describe(self._config.black_box.model, options=self._config.black_box.options)
         conditions = self._analysis.performance.conditions
 
         # Resolved here, against a built probe, and cached: design variables are declared on the

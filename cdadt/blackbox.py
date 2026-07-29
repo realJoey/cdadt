@@ -308,6 +308,7 @@ class OpenConceptSizingBox:
         num_nodes: int,
         solver: SolverSettings | None = None,
         run: RunDirectory | None = None,
+        options: Mapping[str, Any] | None = None,
     ) -> None:
         if num_nodes % 2 == 0:
             raise ValueError(
@@ -317,6 +318,7 @@ class OpenConceptSizingBox:
         self._num_nodes = int(num_nodes)
         self._solver = solver if solver is not None else SolverSettings()
         self._run = run
+        self._options = dict(options or {})
         self._model_class = self._resolve(self._model_spec)
         self._problem: om.Problem | None = None
         self._settable: dict[str, VariableInfo] | None = None
@@ -338,7 +340,7 @@ class OpenConceptSizingBox:
         return ClassSpec(spec, describes="black-box model").resolve(BlackBoxError)
 
     @classmethod
-    def describe(cls, model: str, num_nodes: int = 3) -> OpenConceptSizingBox:
+    def describe(cls, model: str, num_nodes: int = 3, options: Mapping[str, Any] | None = None) -> OpenConceptSizingBox:
         """Return a cheaply built box, for reading the interface without running anything.
 
         Building on the smallest legal grid and with the solver disabled costs a fraction of a
@@ -353,13 +355,23 @@ class OpenConceptSizingBox:
             The analysis to load, as ``"module.path:ClassName"``.
         num_nodes : int, optional
             Grid to build on. Default 3, the smallest odd grid.
+        options : mapping, optional
+            The case file's options for the analysis. Passed on, because an analysis whose
+            options change what it contains would otherwise be described in a configuration
+            nobody asked for -- cdadt's own group would report the interface of the default
+            aerodynamics rather than the one the study names.
 
         Returns
         -------
         OpenConceptSizingBox
             Built, never converged. Its numbers are meaningless; its interface is not.
         """
-        box = cls(model, num_nodes, SolverSettings(maxiter=0, iprint=-1, err_on_non_converge=False))
+        box = cls(
+            model,
+            num_nodes,
+            SolverSettings(maxiter=0, iprint=-1, err_on_non_converge=False),
+            options=options,
+        )
         box.build()
         return box
 
@@ -382,6 +394,15 @@ class OpenConceptSizingBox:
     def solver(self) -> SolverSettings:
         """The Newton solve configuration."""
         return self._solver
+
+    @property
+    def model_options(self) -> dict[str, Any]:
+        """Options the case file passes to the analysis, beyond the grid.
+
+        Empty for OpenConcept's own group, which declares only ``num_nodes``. cdadt's group takes
+        ``aerodynamic_loads`` this way.
+        """
+        return dict(self._options)
 
     @property
     def run_directory(self) -> RunDirectory | None:
@@ -430,7 +451,7 @@ class OpenConceptSizingBox:
         openmdao.api.Problem
             The problem, set up but not converged. No mission has been applied yet.
         """
-        model = self._model_class(num_nodes=self._num_nodes)
+        model = self._model_class(num_nodes=self._num_nodes, **self._options)
         self._attach_solvers(model)
 
         problem = self._run.problem(model) if self._run is not None else om.Problem(model=model, reports=False)

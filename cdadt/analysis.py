@@ -83,6 +83,7 @@ class SizingAnalysis:
                 num_nodes=config.black_box.num_nodes,
                 solver=config.solver.settings(),
                 run=run,
+                options=config.black_box.options,
             )
         )
         self._aircraft = aircraft if aircraft is not None else Aircraft(config.parameters())

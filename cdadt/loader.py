@@ -45,11 +45,6 @@ class ClassSpec:
         """The reference as written."""
         return self._spec
 
-    @property
-    def describes(self) -> str:
-        """What the reference is for, as it appears in an error."""
-        return self._describes
-
     def resolve(self, error: type[Exception] = ValueError) -> type:
         """Return the class this reference names.
 

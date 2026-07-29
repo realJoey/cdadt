@@ -246,7 +246,7 @@ class InspectCommand(Command):
     def execute(self, arguments: argparse.Namespace) -> int:
         """Print what the case's black box accepts and publishes."""
         config = Config.from_yaml(arguments.case)
-        box = OpenConceptSizingBox.describe(config.black_box.model)
+        box = OpenConceptSizingBox.describe(config.black_box.model, options=config.black_box.options)
 
         print(f"Black box : {config.black_box.model}")
         print(f"Case      : {arguments.case}")

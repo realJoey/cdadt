@@ -866,21 +866,49 @@ class ObjectiveSpec:
 
 
 class BlackBoxConfig:
-    """Which sizing analysis to drive, and on what grid."""
+    """Which sizing analysis to drive, on what grid, and with what options.
 
-    __slots__ = ("_model", "_num_nodes")
+    Parameters
+    ----------
+    model : str
+        ``"module:ClassName"`` naming the analysis.
+    num_nodes : int
+        Analysis points per phase.
+    options : mapping, optional
+        Anything else the analysis declares as an OpenMDAO option, passed straight to its
+        constructor. This is how a case file configures a black box that has choices to make --
+        cdadt's own :class:`~cdadt.adapter.analysis.SizingMissionAnalysis` takes
+        ``aerodynamic_loads`` this way, naming which aerodynamics to fly with.
 
-    ALLOWED = ("model", "num_nodes")
+        Not validated here, deliberately. cdadt does not know what options an arbitrary analysis
+        declares, and OpenMDAO already refuses an option a group does not recognise, by name. A
+        list of allowed keys here would be a second source of truth that could only ever be more
+        wrong than the group itself.
+    """
 
-    def __init__(self, model: str, num_nodes: int) -> None:
+    __slots__ = ("_model", "_num_nodes", "_options")
+
+    ALLOWED = ("model", "num_nodes", "options")
+
+    def __init__(self, model: str, num_nodes: int, options: Mapping[str, Any] | None = None) -> None:
         self._model = str(model)
         self._num_nodes = int(num_nodes)
+        self._options = dict(options or {})
 
     @classmethod
     def from_section(cls, section: CaseFileSection) -> BlackBoxConfig:
         """Build from the ``black_box`` section."""
         section.reject_unknown(cls.ALLOWED)
-        return cls(model=section.require("model"), num_nodes=section.require("num_nodes"))
+        return cls(
+            model=section.require("model"),
+            num_nodes=section.require("num_nodes"),
+            options=section.get("options", {}),
+        )
+
+    @property
+    def options(self) -> dict[str, Any]:
+        """Extra options passed to the analysis, as a copy so a caller cannot mutate the case."""
+        return dict(self._options)
 
     @property
     def model(self) -> str:
