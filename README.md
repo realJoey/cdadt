@@ -38,7 +38,7 @@ in data — and never disagree about a number.
 
 ## The black box is the only one it could have been
 
-`B738SizingMissionAnalysis` is the **sole** analysis in OpenConcept's ~30,000 lines that combines
+`B738SizingMissionAnalysis` is the **sole** analysis in OpenConcept's ~30,000 lines of source that combines
 a balanced-field takeoff, Part 25 reserves, a closed weight loop and a scalable engine. Every
 other example is fixed-weight, or lacks the takeoff, or lacks the reserves. That is a survey
 result, not a preference — see `docs/openconcept.rst`.

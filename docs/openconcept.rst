@@ -5,7 +5,8 @@ Choosing which OpenConcept analysis to drive is the single most consequential de
 repository: it fixes what physics is available, what can be constrained, and what the results
 mean. It was therefore made by reading the library rather than by picking the obvious example.
 
-This page records that survey -- roughly 30,000 lines across 100 source files -- and the
+This page records that survey -- 30,137 lines across 107 source files, tests excluded; 41,843
+lines with them -- and the
 conclusion it reached, which is stronger than "this example looks suitable".
 
 The conclusion

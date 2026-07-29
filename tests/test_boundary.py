@@ -357,15 +357,17 @@ def test_cdadt_has_no_module_level_mutable_state():
 def test_cdadt_has_no_class_level_mutable_state():
     """No class in the package carries a mutable class attribute.
 
-    This is the check that removed the last one. An earlier design gave
-    :class:`~cdadt.certification.Requirement` a class-level ``registry`` dict, populated by
-    ``__init_subclass__``. It was convenient and it was shared mutable state: two studies in one
-    process shared it, defining a class anywhere mutated it, and what a case file resolved to
-    depended on what had been imported. It is now
-    :class:`~cdadt.certification.RequirementCatalog`, whose mapping is instance state.
+    This is the check that removed the last one. An early design gave a ``Requirement`` class a
+    class-level ``registry`` dict, populated by ``__init_subclass__``. It was convenient and it
+    was shared mutable state: two studies in one process shared it, defining a class anywhere
+    mutated it, and what a case file resolved to depended on what had been imported. That whole
+    design is gone -- constraints are built from the case file into a
+    :class:`~cdadt.certification.CertificationBasis`, which holds them as instance state -- and
+    ``test_constraints_are_built_from_the_case_file_rather_than_a_registry`` below asserts the
+    old names stay gone.
 
-    Immutable class attributes -- the ownership patterns, the response tuples, the shipped
-    requirement tuple -- are the intended way to declare what a class *is*, and are unaffected.
+    Immutable class attributes -- the ownership patterns, the response tuples, the panel
+    definitions -- are the intended way to declare what a class *is*, and are unaffected.
     """
     import importlib
     import inspect

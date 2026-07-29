@@ -66,7 +66,13 @@ class ConfigError(Exception):
 
 
 class _Absent:
-    """The absence of a default, so that ``None`` can be a default like any other value."""
+    """The absence of a default, so that ``None`` can be a default like any other value.
+
+    ``__slots__`` is empty deliberately: :data:`ABSENT` is module-level, and a module-level
+    object that can be written to is shared mutable state however little it holds.
+    """
+
+    __slots__ = ()
 
     def __repr__(self) -> str:
         """Return a representation that reads as what it means in a signature."""
@@ -404,6 +410,7 @@ class Bounds:
         """Return the bound as it should read in a report."""
 
         def show(value: Any) -> str:
+            """Render one side of the bound, summarising a vector rather than printing it."""
             array = np.atleast_1d(np.asarray(value))
             return f"{float(array.ravel()[0]):g}" if array.size == 1 else f"{array.size} values"
 
