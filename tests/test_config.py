@@ -8,7 +8,8 @@ import numpy as np
 import pytest
 import yaml
 
-from cdadt import Bounds, Config, ConfigError, ObjectiveSpec, OptimizeSpec, Scaling, VariableSpec
+from cdadt import Bounds, CaseFileSection, Config, ConfigError, ObjectiveSpec, OptimizeSpec, Scaling, VariableSpec
+from cdadt.config import ABSENT
 
 MINIMAL = {
     "black_box": {"model": "some.module:SomeClass", "num_nodes": 11},
@@ -449,6 +450,36 @@ def test_the_shipped_cases_are_valid_yaml_documents():
 
 
 @pytest.mark.unit
+def test_a_section_carries_its_own_address_into_the_blocks_below_it():
+    """The point of the class: a nested block derives its address rather than being told one."""
+    section = CaseFileSection({"optimize": {"lower": 9.0, "upper": 11.0}}, "design_variables.ac|geom|wing|AR")
+
+    assert section.child_of("optimize").where == "design_variables.ac|geom|wing|AR.optimize"
+    # Unless it is a top-level block, which is addressed the way the file spells it.
+    assert section.child_of("optimize", where="optimize").where == "optimize"
+
+
+@pytest.mark.unit
+def test_a_required_block_that_is_missing_names_the_section_that_wanted_it():
+    """``ABSENT`` rather than ``None`` as the no-default marker, so ``None`` can be a default."""
+    section = CaseFileSection({}, "the case file")
+
+    with pytest.raises(ConfigError, match="'the case file' requires a 'black_box' key"):
+        section.child_of("black_box")
+    # Given a default, the same call is simply the default.
+    assert section.child_of("solver", {}).where == "the case file.solver"
+
+
+@pytest.mark.unit
+def test_a_section_and_the_absent_marker_repr_as_what_they_are():
+    """Both appear in tracebacks and in signatures, so both have to read as themselves."""
+    section = CaseFileSection({"upper": 8000, "name": "takeoff_field_length"}, "constraints[0]")
+
+    assert repr(section) == "CaseFileSection('constraints[0]', keys=['name', 'upper'])"
+    assert repr(ABSENT) == "ABSENT"
+
+
+@pytest.mark.unit
 def test_every_scaling_spelling_is_readable_and_reaches_openmdao():
     """All four keys, not just ``ref``: the other three are what a case file may write instead.
 
@@ -477,10 +508,11 @@ def test_a_bad_optimize_entry_is_reported_against_the_variable_it_belongs_to():
     caught by ``OptimizeSpec``, and two scalings at once, caught by ``Scaling``. An unknown *key*
     does not -- it is refused earlier, by name, and never reaches the constructor.
     """
+    where = "ac|geom|wing|AR.optimize"
     with pytest.raises(ConfigError, match=r"'ac\|geom\|wing\|AR\.optimize': .*band is empty"):
-        OptimizeSpec.from_dict({"lower": 13.0, "upper": 7.0}, "ac|geom|wing|AR.optimize")
+        OptimizeSpec.from_section(CaseFileSection({"lower": 13.0, "upper": 7.0}, where))
     with pytest.raises(ConfigError, match=r"'ac\|geom\|wing\|AR\.optimize': .*not both"):
-        OptimizeSpec.from_dict({"lower": 7.0, "upper": 13.0, "ref": 1.0, "scaler": 2.0}, "ac|geom|wing|AR.optimize")
+        OptimizeSpec.from_section(CaseFileSection({"lower": 7.0, "upper": 13.0, "ref": 1.0, "scaler": 2.0}, where))
 
 
 @pytest.mark.unit
@@ -535,7 +567,7 @@ def test_maximizing_negates_the_whole_affine_map_and_not_only_its_slope():
 def test_a_bad_scaling_on_the_objective_is_reported_against_the_objective():
     """The two spellings are refused by ``Scaling``; the section has to be named in the message."""
     with pytest.raises(ConfigError, match="'objective': "):
-        ObjectiveSpec.from_dict({"name": "total_fuel", "ref": 1.0, "scaler": 2.0})
+        ObjectiveSpec.from_section(CaseFileSection({"name": "total_fuel", "ref": 1.0, "scaler": 2.0}, "objective"))
 
 
 @pytest.mark.unit

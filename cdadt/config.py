@@ -34,7 +34,7 @@ file means the run succeeds and answers a different question than the one that w
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +48,7 @@ from cdadt.parameters import Parameter
 __all__ = [
     "BlackBoxConfig",
     "Bounds",
+    "CaseFileSection",
     "Config",
     "ConfigError",
     "ConstraintSpec",
@@ -64,60 +65,189 @@ class ConfigError(Exception):
     """Raised when a case file is missing something, has something extra, or has it wrong."""
 
 
+class _Absent:
+    """The absence of a default, so that ``None`` can be a default like any other value."""
+
+    def __repr__(self) -> str:
+        """Return a representation that reads as what it means in a signature."""
+        return "ABSENT"
+
+
+#: Sentinel meaning "no default was given", which makes the block required.
+ABSENT = _Absent()
+
+
 # =============================================================================================
-# Readers
+# Reading the file
 # =============================================================================================
 
 
-def _mapping(value: Any, where: str) -> Mapping[str, Any]:
-    """Return ``value`` as a mapping, or raise naming ``where`` it was expected."""
-    if not isinstance(value, Mapping):
-        raise ConfigError(f"'{where}' must be a mapping; got {type(value).__name__}.")
-    return value
+class CaseFileSection:
+    """One block of a case file, together with the address it lives at.
 
+    Every reader in this module goes through one of these. The point is that a section carries
+    its own address, so a message can say *where* in the file the mistake is without every call
+    site passing that string along by hand -- and so a nested block cannot be given the wrong
+    address, because it derives its own from its parent.
 
-def _sequence(value: Any, where: str) -> Sequence[Any]:
-    """Return ``value`` as a list, or raise naming ``where`` it was expected."""
-    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
-        raise ConfigError(f"'{where}' must be a list; got {type(value).__name__}.")
-    return value
+    A case file is the only thing a user of cdadt writes by hand, and it fails late or not at
+    all if it is read leniently: a misspelled key means the run succeeds and answers a different
+    question. So a section validates on construction, rejects keys it does not recognise, and
+    names the block in every message it raises.
 
+    Parameters
+    ----------
+    data : Any
+        The parsed block. Must be a mapping; anything else is the error this raises.
+    where : str
+        The address, as it should read in a message -- ``"solver"``,
+        ``"design_variables.ac|geom|wing|AR"``, ``"constraints[0]"``.
 
-def _reject_unknown(data: Mapping[str, Any], allowed: Sequence[str], where: str) -> None:
-    """Raise if ``data`` has keys outside ``allowed``."""
-    unknown = sorted(set(data) - set(allowed))
-    if unknown:
-        raise ConfigError(f"'{where}' has unknown key(s) {unknown}. Allowed keys are {sorted(allowed)}.")
+    Raises
+    ------
+    ConfigError
+        If ``data`` is not a mapping, naming ``where`` and what was found instead.
 
-
-def _require(data: Mapping[str, Any], key: str, where: str) -> Any:
-    """Return ``data[key]``, or raise naming ``where`` it was required."""
-    if key not in data:
-        raise ConfigError(f"'{where}' requires a '{key}' key.")
-    return data[key]
-
-
-def _number(value: Any, where: str) -> float:
-    """Return ``value`` as a float, or raise naming ``where`` it came from."""
-    try:
-        return float(value)
-    except (TypeError, ValueError) as error:
-        raise ConfigError(f"'{where}' must be a number; got {value!r}.") from error
-
-
-def _number_or_vector(value: Any, where: str) -> Any:
-    """Return a float, or an array when the case file gave a sequence.
-
-    A sequence is how a per-node schedule is written -- ``[2300, 400]`` for the endpoints of a
-    climb rate -- and how a vector design variable is bounded element by element, which is what
-    OpenConcept's aerostructural example does for a spanwise thickness distribution.
+    Examples
+    --------
+    >>> section = CaseFileSection({"value": 124.6, "units": "m**2"}, "design_variables.S_ref")
+    >>> section.require("value")
+    124.6
+    >>> section.child_of("units")
+    Traceback (most recent call last):
+    ConfigError: 'design_variables.S_ref.units' must be a mapping; got str.
     """
-    if isinstance(value, (list, tuple)):
+
+    __slots__ = ("_data", "_where")
+
+    def __init__(self, data: Any, where: str) -> None:
+        if not isinstance(data, Mapping):
+            raise ConfigError(f"'{where}' must be a mapping; got {type(data).__name__}.")
+        self._data = data
+        self._where = str(where)
+
+    # -- what it is ----------------------------------------------------------------------
+
+    @property
+    def where(self) -> str:
+        """The address this section lives at, as it reads in a message."""
+        return self._where
+
+    def __contains__(self, key: str) -> bool:
+        """Whether the block has ``key``."""
+        return key in self._data
+
+    def __repr__(self) -> str:
+        """Return a representation naming the address and the keys present."""
+        return f"CaseFileSection({self._where!r}, keys={sorted(self._data)})"
+
+    # -- reading -------------------------------------------------------------------------
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Return ``key``'s raw value, or ``default`` if the block does not have it."""
+        return self._data.get(key, default)
+
+    def require(self, key: str) -> Any:
+        """Return ``key``'s raw value.
+
+        Raises
+        ------
+        ConfigError
+            If the block does not have it, naming the block and the key.
+        """
+        if key not in self._data:
+            raise ConfigError(f"'{self._where}' requires a '{key}' key.")
+        return self._data[key]
+
+    def reject_unknown(self, allowed: Sequence[str]) -> None:
+        """Raise if the block carries any key outside ``allowed``.
+
+        Raises
+        ------
+        ConfigError
+            Naming the offending keys and listing what is allowed. A silently ignored key means
+            the study runs and answers a different question than the one that was written.
+        """
+        unknown = sorted(set(self._data) - set(allowed))
+        if unknown:
+            raise ConfigError(f"'{self._where}' has unknown key(s) {unknown}. Allowed keys are {sorted(allowed)}.")
+
+    def number_or_vector(self, key: str) -> Any:
+        """Return ``key`` as a float, or an array when the file gave a sequence."""
+        return self.as_number_or_vector(self.require(key), f"{self._where}.{key}")
+
+    # -- descending ----------------------------------------------------------------------
+
+    def child_of(self, key: str, default: Any = ABSENT, *, where: str | None = None) -> CaseFileSection:
+        """Return the block at ``key`` as a section of its own.
+
+        Parameters
+        ----------
+        key : str
+            Which block to descend into.
+        default : Any, optional
+            Used when the key is absent, so an optional block reads the same as a present one --
+            pass ``{}`` for a block whose keys all have defaults of their own. Omit it to make
+            the block required, in which case an absent key raises naming this section.
+        where : str, optional
+            Address to give the child. Defaults to ``"<this section>.<key>"``, which is what a
+            nested block wants. The top-level blocks of a case file pass their own bare name
+            instead: a reader is looking for ``'objective'`` in the message, not
+            ``'the case file.objective'``.
+        """
+        if key not in self._data and default is ABSENT:
+            self.require(key)
+        raw = self._data.get(key, default)
+        return CaseFileSection(raw, where if where is not None else f"{self._where}.{key}")
+
+    def entries(self) -> Iterator[tuple[str, CaseFileSection]]:
+        """Iterate ``(name, section)`` for a block whose keys are themselves blocks.
+
+        This is what ``design_variables`` and ``initial_conditions`` are: a mapping from a
+        black-box variable name to its entry.
+        """
+        for name in self._data:
+            yield name, CaseFileSection(self._data[name], f"{self._where}.{name}")
+
+    def series(self, key: str) -> tuple[CaseFileSection, ...]:
+        """Return the list at ``key`` as sections addressed ``key[0]``, ``key[1]``, ...
+
+        Absent means empty, because a case file that constrains nothing simply omits the block.
+
+        Raises
+        ------
+        ConfigError
+            If the value is present but is not a list.
+        """
+        raw = self._data.get(key, [])
+        if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
+            raise ConfigError(f"'{key}' must be a list; got {type(raw).__name__}.")
+        return tuple(CaseFileSection(entry, f"{key}[{index}]") for index, entry in enumerate(raw))
+
+    # -- converting a value that did not come from a key ---------------------------------
+
+    @staticmethod
+    def as_number(value: Any, where: str) -> float:
+        """Return ``value`` as a float, or raise naming ``where`` it came from."""
         try:
-            return np.asarray([float(item) for item in value])
+            return float(value)
         except (TypeError, ValueError) as error:
-            raise ConfigError(f"'{where}' has a non-numeric entry: {value!r}.") from error
-    return _number(value, where)
+            raise ConfigError(f"'{where}' must be a number; got {value!r}.") from error
+
+    @staticmethod
+    def as_number_or_vector(value: Any, where: str) -> Any:
+        """Return a float, or an array when the case file gave a sequence.
+
+        A sequence is how a per-node schedule is written -- ``[2300, 400]`` for the endpoints of
+        a climb rate -- and how a vector design variable is bounded element by element, which is
+        what OpenConcept's aerostructural example does for a spanwise thickness distribution.
+        """
+        if isinstance(value, (list, tuple)):
+            try:
+                return np.asarray([float(item) for item in value])
+            except (TypeError, ValueError) as error:
+                raise ConfigError(f"'{where}' has a non-numeric entry: {value!r}.") from error
+        return CaseFileSection.as_number(value, where)
 
 
 # =============================================================================================
@@ -154,9 +284,13 @@ class Scaling:
         self._adder = None if adder is None else float(adder)
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> Scaling:
-        """Build from whichever of the four keys an entry carries."""
-        return cls(**{key: data[key] for key in cls.ALLOWED if key in data})
+    def from_section(cls, section: CaseFileSection) -> Scaling:
+        """Build from whichever of the four keys an entry carries.
+
+        Scaling shares its block with whatever else the entry declares -- bounds, indices, a
+        regulation -- so this reads the four keys it owns and leaves the rest to the caller.
+        """
+        return cls(**{key: section.get(key) for key in cls.ALLOWED if key in section})
 
     @property
     def ref(self) -> float | None:
@@ -218,9 +352,10 @@ class Bounds:
             raise ConfigError("A constraint is either an equality or an inequality, not both.")
         if equals is None and lower is None and upper is None:
             raise ConfigError("A constraint needs a 'lower', an 'upper' or an 'equals'.")
-        self._lower = None if lower is None else _number_or_vector(lower, "constraint lower bound")
-        self._upper = None if upper is None else _number_or_vector(upper, "constraint upper bound")
-        self._equals = None if equals is None else _number_or_vector(equals, "constraint equality")
+        read = CaseFileSection.as_number_or_vector
+        self._lower = None if lower is None else read(lower, "constraint lower bound")
+        self._upper = None if upper is None else read(upper, "constraint upper bound")
+        self._equals = None if equals is None else read(equals, "constraint equality")
         if (
             self._lower is not None
             and self._upper is not None
@@ -313,18 +448,17 @@ class OptimizeSpec:
         self._indices = None if indices is None else [int(index) for index in indices]
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any], where: str) -> OptimizeSpec:
+    def from_section(cls, section: CaseFileSection) -> OptimizeSpec:
         """Build one ``optimize:`` entry."""
-        mapping = _mapping(data, where)
-        _reject_unknown(mapping, cls.ALLOWED, where)
+        section.reject_unknown(cls.ALLOWED)
         try:
             return cls(
-                bounds=Bounds(lower=mapping.get("lower"), upper=mapping.get("upper")),
-                scaling=Scaling.from_dict(mapping),
-                indices=mapping.get("indices"),
+                bounds=Bounds(lower=section.get("lower"), upper=section.get("upper")),
+                scaling=Scaling.from_section(section),
+                indices=section.get("indices"),
             )
         except ConfigError as error:
-            raise ConfigError(f"'{where}': {error}") from None
+            raise ConfigError(f"'{section.where}': {error}") from None
 
     @property
     def bounds(self) -> Bounds:
@@ -410,17 +544,15 @@ class VariableSpec:
         self._optimize = optimize
 
     @classmethod
-    def from_dict(cls, name: str, data: Any, where: str) -> VariableSpec:
+    def from_section(cls, name: str, section: CaseFileSection) -> VariableSpec:
         """Build one entry."""
-        mapping = _mapping(data, where)
-        _reject_unknown(mapping, cls.ALLOWED, where)
-        optimize = mapping.get("optimize")
+        section.reject_unknown(cls.ALLOWED)
         return cls(
             name=name,
-            value=_number_or_vector(_require(mapping, "value", where), f"{where}.value"),
-            units=mapping.get("units"),
-            source=str(mapping.get("source", "")),
-            optimize=None if optimize is None else OptimizeSpec.from_dict(optimize, f"{where}.optimize"),
+            value=section.number_or_vector("value"),
+            units=section.get("units"),
+            source=str(section.get("source", "")),
+            optimize=None if "optimize" not in section else OptimizeSpec.from_section(section.child_of("optimize")),
         )
 
     @property
@@ -535,25 +667,24 @@ class ConstraintSpec:
         self._title = str(title) if title else str(name)
 
     @classmethod
-    def from_dict(cls, data: Any, where: str) -> ConstraintSpec:
+    def from_section(cls, section: CaseFileSection) -> ConstraintSpec:
         """Build one constraint entry."""
-        mapping = _mapping(data, where)
-        _reject_unknown(mapping, cls.ALLOWED, where)
+        section.reject_unknown(cls.ALLOWED)
         try:
-            bounds = Bounds(lower=mapping.get("lower"), upper=mapping.get("upper"), equals=mapping.get("equals"))
-            scaling = Scaling.from_dict(mapping)
+            bounds = Bounds(lower=section.get("lower"), upper=section.get("upper"), equals=section.get("equals"))
+            scaling = Scaling.from_section(section)
         except ConfigError as error:
-            raise ConfigError(f"'{where}': {error}") from None
+            raise ConfigError(f"'{section.where}': {error}") from None
         return cls(
-            name=_require(mapping, "name", where),
+            name=section.require("name"),
             bounds=bounds,
-            units=mapping.get("units"),
+            units=section.get("units"),
             scaling=scaling,
-            indices=mapping.get("indices"),
-            linear=bool(mapping.get("linear", False)),
-            regulation=str(mapping.get("regulation", "")),
-            source=str(mapping.get("source", "")),
-            title=str(mapping.get("title", "")),
+            indices=section.get("indices"),
+            linear=bool(section.get("linear", False)),
+            regulation=str(section.get("regulation", "")),
+            source=str(section.get("source", "")),
+            title=str(section.get("title", "")),
         )
 
     @property
@@ -652,21 +783,19 @@ class ObjectiveSpec:
         self._index = None if index is None else int(index)
 
     @classmethod
-    def from_dict(cls, data: Any) -> ObjectiveSpec:
+    def from_section(cls, section: CaseFileSection) -> ObjectiveSpec:
         """Build from the ``objective`` section."""
-        where = "objective"
-        mapping = _mapping(data, where)
-        _reject_unknown(mapping, cls.ALLOWED, where)
+        section.reject_unknown(cls.ALLOWED)
         try:
-            scaling = Scaling.from_dict(mapping)
+            scaling = Scaling.from_section(section)
         except ConfigError as error:
-            raise ConfigError(f"'{where}': {error}") from None
+            raise ConfigError(f"'{section.where}': {error}") from None
         return cls(
-            name=_require(mapping, "name", where),
-            units=mapping.get("units"),
+            name=section.require("name"),
+            units=section.get("units"),
             scaling=scaling,
-            sense=str(mapping.get("sense", "minimize")),
-            index=mapping.get("index"),
+            sense=str(section.get("sense", "minimize")),
+            index=section.get("index"),
         )
 
     @property
@@ -741,10 +870,10 @@ class BlackBoxConfig:
         self._num_nodes = int(num_nodes)
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> BlackBoxConfig:
+    def from_section(cls, section: CaseFileSection) -> BlackBoxConfig:
         """Build from the ``black_box`` section."""
-        _reject_unknown(data, cls.ALLOWED, "black_box")
-        return cls(model=_require(data, "model", "black_box"), num_nodes=_require(data, "num_nodes", "black_box"))
+        section.reject_unknown(cls.ALLOWED)
+        return cls(model=section.require("model"), num_nodes=section.require("num_nodes"))
 
     @property
     def model(self) -> str:
@@ -783,10 +912,10 @@ class SolverConfig:
         self._err_on_non_converge = bool(err_on_non_converge)
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> SolverConfig:
+    def from_section(cls, section: CaseFileSection) -> SolverConfig:
         """Build from the ``solver`` section, which may be empty."""
-        _reject_unknown(data, cls.ALLOWED, "solver")
-        return cls(**{key: data[key] for key in cls.ALLOWED if key in data})
+        section.reject_unknown(cls.ALLOWED)
+        return cls(**{key: section.get(key) for key in cls.ALLOWED if key in section})
 
     def settings(self) -> SolverSettings:
         """Return the :class:`~cdadt.blackbox.SolverSettings` this section describes."""
@@ -833,15 +962,15 @@ class DriverConfig:
         self._options = dict(options or {})
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> DriverConfig:
+    def from_section(cls, section: CaseFileSection) -> DriverConfig:
         """Build from the ``driver`` section."""
-        _reject_unknown(data, cls.ALLOWED, "driver")
+        section.reject_unknown(cls.ALLOWED)
         return cls(
-            name=str(data.get("name", "SLSQP")),
-            maxiter=int(data.get("maxiter", 50)),
-            tol=float(data.get("tol", 1e-6)),
-            derivative_mode=str(data.get("derivative_mode", "fwd")),
-            options=data.get("options", {}),
+            name=str(section.get("name", "SLSQP")),
+            maxiter=int(section.get("maxiter", 50)),
+            tol=float(section.get("tol", 1e-6)),
+            derivative_mode=str(section.get("derivative_mode", "fwd")),
+            options=section.get("options", {}),
         )
 
     @property
@@ -969,56 +1098,62 @@ class Config:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any], path: Path | None = None) -> Config:
-        """Build a configuration from an already-parsed mapping."""
-        _reject_unknown(data, cls.ALLOWED, "the case file")
+        """Build a configuration from an already-parsed mapping.
+
+        This is where the raw document becomes a :class:`CaseFileSection`; every reader below
+        this point takes a section and therefore knows its own address in the file.
+        """
+        return cls.from_section(CaseFileSection(data, "the case file"), path=path)
+
+    @classmethod
+    def from_section(cls, section: CaseFileSection, path: Path | None = None) -> Config:
+        """Build a configuration from the top-level section of a case file."""
+        section.reject_unknown(cls.ALLOWED)
 
         steps = []
-        for index, entry in enumerate(_sequence(data.get("continuation", []), "continuation")):
-            where = f"continuation[{index}]"
-            step = _mapping(entry, where)
-            _reject_unknown(step, ("description", "initial_conditions"), where)
+        for index, rung in enumerate(section.series("continuation")):
+            rung.reject_unknown(("description", "initial_conditions"))
             steps.append(
                 ContinuationStep(
-                    description=str(step.get("description", f"step {index + 1}")),
-                    conditions=cls._read_conditions(step.get("initial_conditions", {}), f"{where}.initial_conditions"),
+                    description=str(rung.get("description", f"step {index + 1}")),
+                    conditions=cls._read_conditions(rung.child_of("initial_conditions", {})),
                 )
             )
 
-        objective = data.get("objective")
+        # The top-level blocks are addressed by their own bare names, so that a message points at
+        # 'objective' the way the file spells it rather than at 'the case file.objective'.
         return cls(
-            black_box=BlackBoxConfig.from_dict(_mapping(_require(data, "black_box", "the case file"), "black_box")),
-            design_variables=cls._read_variables(
-                _require(data, "design_variables", "the case file"), "design_variables"
+            black_box=BlackBoxConfig.from_section(section.child_of("black_box", where="black_box")),
+            design_variables=cls._read_variables(section.child_of("design_variables", where="design_variables")),
+            initial_conditions=cls._read_variables(
+                section.child_of("initial_conditions", {}, where="initial_conditions")
             ),
-            initial_conditions=cls._read_variables(data.get("initial_conditions", {}), "initial_conditions"),
             continuation=ContinuationLadder(steps),
-            solver=SolverConfig.from_dict(_mapping(data.get("solver", {}), "solver")),
-            driver=DriverConfig.from_dict(_mapping(data.get("driver", {}), "driver")),
-            constraints=[
-                ConstraintSpec.from_dict(entry, f"constraints[{index}]")
-                for index, entry in enumerate(_sequence(data.get("constraints", []), "constraints"))
-            ],
-            objective=None if objective is None else ObjectiveSpec.from_dict(objective),
-            mission_path=str(data.get("mission_path", "mission")),
+            solver=SolverConfig.from_section(section.child_of("solver", {}, where="solver")),
+            driver=DriverConfig.from_section(section.child_of("driver", {}, where="driver")),
+            constraints=[ConstraintSpec.from_section(entry) for entry in section.series("constraints")],
+            objective=(
+                None
+                if "objective" not in section
+                else ObjectiveSpec.from_section(section.child_of("objective", where="objective"))
+            ),
+            mission_path=str(section.get("mission_path", "mission")),
             path=path,
         )
 
     @staticmethod
-    def _read_variables(entries: Any, where: str) -> dict[str, VariableSpec]:
-        """Return ``name -> VariableSpec`` from a mapping of entries."""
-        mapping = _mapping(entries, where)
-        return {name: VariableSpec.from_dict(name, entry, f"{where}.{name}") for name, entry in mapping.items()}
+    def _read_variables(section: CaseFileSection) -> dict[str, VariableSpec]:
+        """Return ``name -> VariableSpec`` from a block of entries."""
+        return {name: VariableSpec.from_section(name, entry) for name, entry in section.entries()}
 
     @staticmethod
-    def _read_conditions(entries: Any, where: str) -> dict[str, tuple[Any, str | None]]:
-        """Return ``name -> (value, units)`` from a mapping of entries."""
-        mapping = _mapping(entries, where)
+    def _read_conditions(section: CaseFileSection) -> dict[str, tuple[Any, str | None]]:
+        """Return ``name -> (value, units)`` from a block of entries."""
         conditions = {}
-        for name, entry in mapping.items():
-            item = _mapping(entry, f"{where}.{name}")
-            _reject_unknown(item, ("value", "units"), f"{where}.{name}")
+        for name, item in section.entries():
+            item.reject_unknown(("value", "units"))
             conditions[name] = (
-                _number_or_vector(_require(item, "value", f"{where}.{name}"), f"{where}.{name}.value"),
+                item.number_or_vector("value"),
                 item.get("units"),
             )
         return conditions
