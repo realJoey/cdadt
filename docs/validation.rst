@@ -123,7 +123,7 @@ reserves, a closed weight loop and a scalable engine. That is a survey result, n
 see :doc:`openconcept`.
 
 **The optimization converges and is feasible.** :mod:`tests.test_optimization` runs the shipped
-study end to end and asserts that the driver converged, that no requirement is violated, that
+study end to end and asserts that the driver converged, that no constraint is violated, that
 the objective actually improved, that the mission is still flown, and that the field length is
 still balanced at the optimum.
 
@@ -162,7 +162,7 @@ the result, not part of the setup.
 Known gaps in the certification argument
 ----------------------------------------
 
-Every requirement cdadt can enforce is a function of a quantity the black box publishes. These
+Every constraint cdadt can enforce is a bound on a quantity the black box publishes. These
 are the ones it cannot, and each is a real gap rather than an omission:
 
 **§25.121(b) is evaluated clean.** The regulation specifies the second-segment gradient with the

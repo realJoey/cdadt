@@ -59,7 +59,7 @@ The named responses
 cdadt gives short names to the outputs its disciplines report, so a case file can write
 ``objective: {name: total_fuel}`` rather than
 ``mission.loiter.fuel_burn_integ.fuel_burn_final``. Those names are also what
-:doc:`certification` requirements are evaluated on. They come from the discipline classes
+:doc:`certification` constraints are evaluated on. They come from the discipline classes
 themselves, so the list below is generated from the same source the code uses:
 
 .. list-table::

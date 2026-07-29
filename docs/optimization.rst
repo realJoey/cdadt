@@ -8,32 +8,48 @@ in Python.
 Order of operations
 -------------------
 
-1. **Check everything, before anything expensive.** A three-node probe of the black box is
-   built -- a fraction of a second -- and every design variable is confirmed to be an
-   independent variable the box accepts, and the objective and every constraint to be a quantity
-   it publishes. A misspelled design variable is a message naming it with suggestions, not an
-   OpenMDAO error thrown out of ``setup`` after a minute of building.
+1. **Check everything, before anything expensive.** A cheap probe of the black box is built -- a
+   fraction of a second -- and every freed variable is confirmed to be an independent variable
+   the box accepts, and the objective and every constraint to be a quantity it publishes. A
+   misspelled name is a message naming it with suggestions, not an OpenMDAO error thrown out of
+   ``setup`` after a minute of building.
 2. **Declare, then build.** Design variables, constraints and the objective are registered on
    the box's own group *before* ``setup``, because OpenMDAO requires it. Registering a design
    variable changes no OpenConcept behaviour; it states which of the box's existing independent
    variables a driver may move.
 3. **Converge a baseline.** The continuation ladder is walked once. The driver's first function
-   evaluation must begin from a converged aircraft.
+   evaluation must begin from a converged aircraft. This is
+   :meth:`~cdadt.optimization.Optimizer.prepare`, and it is separable from the run because the
+   declared, converged, undriven problem is exactly where total derivatives are checked.
 4. **Drive.** Every later design starts from its predecessor's converged state.
 5. **Evaluate the basis at the optimum** and report both the design change and the traceability
    matrix.
 
-Design variables
-----------------
+Freeing a design variable
+-------------------------
+
+There is no separate list of design variables. Every ``ac|`` variable is already declared in the
+case file's ``design_variables`` block with its value and its source; one becomes free for the
+driver by gaining an ``optimize:`` entry *there*:
 
 .. code-block:: yaml
 
    design_variables:
-     - {name: ac|geom|wing|S_ref, lower: 90.0, upper: 180.0, units: m**2}
-     - {name: ac|geom|wing|AR, lower: 7.0, upper: 13.0}
-     - {name: ac|geom|wing|c4sweep, lower: 15.0, upper: 32.0, units: deg}
-     - {name: ac|geom|wing|taper, lower: 0.12, upper: 0.35}
-     - {name: ac|propulsion|engine|rating, lower: 18.0e3, upper: 34.0e3, units: lbf}
+     ac|geom|wing|S_ref:
+       value: 124.6
+       units: m**2
+       source: b737.org.uk technical specifications
+       optimize: {lower: 90.0, upper: 180.0}
+
+     ac|geom|wing|AR:
+       value: 9.45
+       source: b737.org.uk technical specifications
+       optimize: {lower: 7.0, upper: 13.0}
+
+The shipped study frees five that way: wing area, aspect ratio, quarter-chord sweep, taper, and
+the engine rating. Deleting the three ``optimize:`` lines of a variable holds it fixed again, and
+nothing else in the file changes -- the value, the units and the provenance stay where they were,
+so a sizing case and the optimization of the same aeroplane never disagree about a number.
 
 Only independent variables of the box are eligible. Anything the box computes -- operating empty
 weight, the tail areas, the maximum lift coefficients, maximum takeoff weight -- is a result of
@@ -59,8 +75,9 @@ the *scaled* objective, so a fuel mass of order 1e4 kg is inside tolerance befor
 iteration. ``ref: 2.0e4`` fixes that. IPOPT scales the objective from its own gradient and does
 not need it.
 
-**Constraints** are scaled by their own limit, automatically. Without it a climb gradient in
-hundredths of a radian is numerically invisible next to a field length in thousands of feet.
+**Constraints** are scaled by the magnitude of their own bound, automatically. Without it a climb
+gradient in hundredths of a radian is numerically invisible next to a field length in thousands
+of feet.
 
 Choosing a driver
 -----------------
@@ -122,7 +139,7 @@ somewhere unacceptable should be visible in the same table.
 :doc:`certification`.
 
 An optimization is reported as having succeeded only if the driver converged **and** every
-requirement is satisfied. Both halves matter: a driver that stops on its iteration limit inside
+constraint is satisfied. Both halves matter: a driver that stops on its iteration limit inside
 an infeasible region has not solved the problem, and a report that calls that an optimum is
 wrong. ``cdadt optimize`` exits non-zero in that case, so a shell script cannot archive a
 failure as a success.
@@ -131,24 +148,35 @@ The shipped study
 -----------------
 
 Minimizing fuel with reserves over the wing planform and the engine rating, subject to 14 CFR
-25.113, 25.121(b)(1)(i) and the engine deck's throttle limits in climb and cruise:
+25.113, 25.121(b)(1)(i) and the engine deck's throttle band in climb and cruise. IPOPT, 38
+objective evaluations and 23 sensitivity evaluations, about two minutes at 11 nodes per phase:
 
 =============================  ===========  ===========  ==========
 Quantity                       Baseline     Optimum      Change
 =============================  ===========  ===========  ==========
-Fuel with reserves (kg)        18,596.8     15,991.4     **-14.0%**
-Block fuel (kg)                15,976.6     13,751.3     -13.9%
-Maximum takeoff weight (kg)    78,345.0     71,959.3     -8.2%
-Operating empty weight (kg)    41,748.2     37,968.0     -9.1%
-Engine rating (lbf)            27,000       21,911       -18.9%
-Balanced field length (ft)     5,247.7      6,263.7      +19.4%
+Fuel with reserves (kg)        18,596.8     15,914.6     **-14.4%**
+Block fuel (kg)                15,976.6     13,716.6     -14.2%
+Maximum takeoff weight (kg)    78,345.0     71,340.0     -8.9%
+Operating empty weight (kg)    41,748.2     37,425.4     -10.4%
+Engine rating (lbf)            27,000       20,774.5     -23.1%
+Balanced field length (ft)     5,247.7      6,587.1      +25.5%
 =============================  ===========  ===========  ==========
 
-Four of four requirements met, one active. The active one is the **climb throttle limit**, and
-that is the interesting result: the design is not limited by the runway or by the second-segment
-climb gradient, both of which retain large margins, but by the engine deck running out of
-throttle in the climb. The field length grows by 19% and remains comfortably inside the 8000 ft
-limit -- the optimizer spends the margin it has and stops where it runs out of thrust.
+Four of four constraints met, one active: the **climb throttle band**. Neither certification
+constraint binds -- the field length keeps 1413 ft of margin and the second-segment gradient
+keeps 0.026 rad, more than double its minimum -- so the design that comes out is not, in this
+study, a certification-limited design. It is limited by the engine deck running out of throttle
+in the climb.
+
+.. important::
+
+   **Three of the five design variables end on a bound.** Aspect ratio sits on its upper bound of
+   13, and quarter-chord sweep and taper on their lower bounds of 15° and 0.12. That is the
+   bounds doing the modelling, and it has to be read as such: the study says the box's drag and
+   weight correlations would keep paying for more span, less sweep and more taper as far as it is
+   willing to extrapolate them. Widening the intervals would move the answer. Whether they
+   *should* be widened is an engineering judgement about where those correlations remain
+   defensible for a transport-category aeroplane, not a numerical one.
 
 Reproduce it with:
 
@@ -158,5 +186,5 @@ Reproduce it with:
 
 Read :doc:`validation` before quoting these numbers. In particular the engine-out gradient is
 evaluated clean rather than in the takeoff configuration §25.121(b) specifies, and the engine is
-a scaled deck rather than a redesigned engine -- an 18.9% reduction in rating is a long way down
-the surrogate.
+a scaled deck rather than a redesigned engine -- a 23% reduction in rating is a long way down the
+surrogate.

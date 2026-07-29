@@ -1,10 +1,11 @@
 The mission
 ===========
 
-The mission is what the aircraft is sized against, and it is owned by the
-:class:`~cdadt.disciplines.performance.Performance` discipline as a
-:class:`~cdadt.mission.MissionProfile`. It has three parts: the mission-level parameters, the
-per-phase schedules, and the continuation ladder.
+The mission is what the aircraft is sized against. It is owned by the
+:class:`~cdadt.disciplines.performance.Performance` discipline, as the same pair OpenConcept's
+own run scripts write by hand: the :class:`~cdadt.mission.InitialConditions` -- everything
+``set_values(prob, num_nodes)`` writes into the problem -- and the
+:class:`~cdadt.mission.ContinuationLadder` that makes the hard ones reachable.
 
 What is flown
 -------------
@@ -14,47 +15,64 @@ FL150 and a 30-minute loiter:
 
 .. code-block:: yaml
 
-   mission:
-     parameters:
-       mission_range: {value: 2800, units: nmi}
-       cruise|h0:     {value: 35000, units: ft}
-       reserve_range: {value: 200, units: nmi}
-       reserve|h0:    {value: 15000, units: ft}
+   initial_conditions:
+     mission_range: {value: 2800, units: nmi}
+     cruise|h0:     {value: 35000, units: ft}
+     reserve_range: {value: 200, units: nmi}
+     reserve|h0:    {value: 15000, units: ft}
 
 ``loiter|h0``, ``loiter_duration`` and ``takeoff|h`` are not set, so they keep the box's own
 defaults: 1500 ft, 30 minutes and sea level. That is a deliberate choice about which numbers the
 case owns; setting them is a one-line addition.
 
+Names are written as the box publishes them, and resolved first as written and then under the
+case's ``mission_path`` -- so ``cruise|h0`` and ``mission.cruise|h0`` both work, and a name that
+resolves neither way is an error naming both attempts rather than a silently ignored line.
+
 The schedules
 -------------
 
-Each of the seven steady-flight phases is flown along an equivalent-airspeed and vertical-speed
-schedule. All seven must be present. There is no default profile to fall back on: an
-unscheduled phase flies whatever placeholder its component declared, which is a different
-mission than the one the case asks for, quietly.
+Each steady-flight phase is flown along an equivalent-airspeed and vertical-speed schedule,
+written under the phase's own name exactly as ``set_values`` writes it:
 
 .. code-block:: yaml
 
-     schedule:
-       climb:
-         Ueas: {value: [230, 252], units: kn}
-         vs:   {value: [2300, 400], units: ft/min}
-       cruise:
-         Ueas: {value: [252, 252], units: kn}
-         vs:   {value: 0, units: ft/min}
-       descent:
-         Ueas: {value: [252, 250], units: kn}
-         vs:   {value: [-1300, -800], units: ft/min}
+   initial_conditions:
+     climb.fltcond|Ueas:   {value: [230, 252], units: kn}
+     climb.fltcond|vs:     {value: [2300, 400], units: ft/min}
+     cruise.fltcond|Ueas:  {value: 252, units: kn}
+     cruise.fltcond|vs:    {value: 0, units: ft/min}
+     descent.fltcond|Ueas: {value: [252, 250], units: kn}
+     descent.fltcond|vs:   {value: [-1300, -800], units: ft/min}
 
-A value may be one number, two numbers to interpolate between across the phase, or exactly
-``num_nodes`` numbers. Any other length is an error. Both ``Ueas`` and ``vs`` are required in
-every entry, including inside a continuation step: setting one alone flies a profile that is
-half inherited from whatever was set before.
+The shipped case schedules all seven steady phases -- climb, cruise, descent, the three reserve
+phases and loiter -- and both quantities in each. Nothing forces that, and nothing can: to the
+box these are ordinary variables carrying their own declared defaults. What an unscheduled phase
+flies is whatever placeholder its component declared, which is a different mission than the one
+the case appears to ask for. Schedule them all.
 
-The three ground-roll phases -- ``v0v1``, ``v1vr``, ``v1v0`` -- are not scheduled. They
-integrate acceleration from a standstill, so what they need is a starting guess for true
-airspeed rather than a profile, and ``takeoff_speed_guess`` supplies it once, before the first
-solve.
+A value may be one number, two numbers to interpolate between across the phase (exactly as
+``np.linspace`` does in OpenConcept's own run script), or exactly as many numbers as the
+variable's shape. Any other length is an error rather than being broadcast, because broadcasting
+would quietly fly a different mission.
+
+The three ground-roll phases -- ``v0v1``, ``v1vr``, ``v1v0`` -- have no schedule. They integrate
+acceleration from a standstill, so what they need is a starting guess for true airspeed:
+
+.. code-block:: yaml
+
+   initial_conditions:
+     v0v1.fltcond|Utrue: {value: 100, units: kn}
+     v1vr.fltcond|Utrue: {value: 100, units: kn}
+     v1v0.fltcond|Utrue: {value: 100, units: kn}
+     ac|weights|MTOW:    {value: 50.0e3, units: kg}
+
+Those four are seeds, not designs. Maximum takeoff weight is an *output* -- it is what the weight
+closure solves for -- and writing a value onto it before the first solve chooses where Newton
+starts, not what it converges to. They are re-applied before every continuation rung and before
+the design run, which is not cosmetic: it is why the box converges at every tolerance probed down
+to 1e-12 on every grid, where writing them once left some grids stalling near 9e-9. See
+:doc:`verification`.
 
 Continuation, and why it is part of the interface
 -------------------------------------------------
@@ -70,29 +88,25 @@ calls. cdadt does the same thing, as data:
 
 .. code-block:: yaml
 
-     continuation:
-       - description: short range at low altitude, gentle descent
-         parameters:
-           mission_range: {value: 500, units: nmi}
-           cruise|h0:     {value: 5000, units: ft}
-           reserve_range: {value: 100, units: nmi}
-           reserve|h0:    {value: 1000, units: ft}
-         schedule:
-           descent:
-             Ueas: {value: [252, 250], units: kn}
-             vs:   {value: [-800, -800], units: ft/min}
+   continuation:
+     - description: short low-altitude mission, gentle descent
+       initial_conditions:
+         mission_range:      {value: 500, units: nmi}
+         cruise|h0:          {value: 5000, units: ft}
+         reserve_range:      {value: 100, units: nmi}
+         reserve|h0:         {value: 1000, units: ft}
+         descent.fltcond|vs: {value: -800, units: ft/min}
 
-       - description: design range and altitude, still with the gentle descent
-         schedule:
-           descent:
-             Ueas: {value: [252, 250], units: kn}
-             vs:   {value: [-800, -800], units: ft/min}
+     - description: design range and altitude, still with the gentle descent
+       initial_conditions:
+         descent.fltcond|vs: {value: -800, units: ft/min}
 
-Each step is written on top of the design profile and converged, so the solver enters the next
-step from a converged neighbour. The last step is followed by the design mission itself. The
-shipped ladder is two rungs: first shrink the mission to 500 nmi at 5000 ft and soften the
-descent, then restore the range and altitude but keep the gentle descent, then finally apply
-the real descent schedule.
+A rung takes ``description`` and ``initial_conditions``, nothing else. Each is written on top of
+the case's own initial conditions -- which are re-applied underneath it every time -- and
+converged, so the solver enters the next rung from a converged neighbour. The last rung is
+followed by the design mission itself. The shipped ladder is two: first shrink the mission to
+500 nmi at 5000 ft and soften the descent, then restore the range and altitude but keep the
+gentle descent, and finally apply the real descent schedule.
 
 Making this data rather than statements has three consequences worth the trouble. The ladder
 travels with the mission it converges, so a case file that is copied and edited keeps working.

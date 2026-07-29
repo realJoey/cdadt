@@ -13,9 +13,10 @@ This module refines the grid and measures. It establishes three things:
 3. The shipped grid of 21 nodes per phase is converged to a stated tolerance, so the digits
    quoted elsewhere in this repository are earned.
 
-Run at a uniform solver tolerance of 1e-8 across every grid. That is deliberate: comparing
-grids converged to different residuals would confound discretization error with solver error,
-which is the most common way a grid study reaches a wrong conclusion.
+Run at a uniform solver tolerance across every grid -- the 1e-9 the shipped cases request, which
+:mod:`tests.test_verification_solver` measures every grid to reach. Uniformity is the deliberate
+part: comparing grids converged to different residuals would confound discretization error with
+solver error, which is the most common way a grid study reaches a wrong conclusion.
 """
 
 from __future__ import annotations

@@ -20,7 +20,7 @@ The layers
      |     +-- Structures    load-carrying airframe mass breakdown
      |     +-- Weights       payload, cabin, the closed weight rollup
      |
-     +-- Performance         owns the MissionProfile: what is flown, and the ladder to it
+     +-- Performance         owns the InitialConditions and the ContinuationLadder
      |
      +-- OpenConceptSizingBox   the black box: loaded by name, set, converged, read
            |
@@ -98,13 +98,14 @@ Performance is the odd one
 --------------------------
 
 :class:`~cdadt.disciplines.performance.Performance` is the one discipline whose encapsulated
-state is not a bag of scalars. It owns a :class:`~cdadt.mission.MissionProfile`: the design
-range, the cruise altitude, the reserve mission, the loiter, the schedule flown in each phase,
-and the continuation ladder. Those are design inputs in exactly the sense the geometry
-parameters are -- change the range and you change the aeroplane -- but they are a structured
-object rather than a list of numbers, so they are held as one. See :doc:`mission`.
+state is not a bag of scalars. It owns the pair OpenConcept's own run scripts write by hand: the
+:class:`~cdadt.mission.InitialConditions` -- everything ``set_values(prob, num_nodes)`` writes,
+which is the design range, the cruise altitude, the reserve mission, the per-phase schedules and
+the solver's starting guesses -- and the :class:`~cdadt.mission.ContinuationLadder` that makes
+the hard ones reachable. Those are design inputs in exactly the sense the geometry parameters
+are: change the range and you change the aeroplane. See :doc:`mission`.
 
-It is also the discipline the certification requirements are written against: field length,
+It is also the discipline the certification constraints are written against: field length,
 decision and safety speeds, engine-out climb gradient, fuel, and the throttle history of every
 phase.
 
@@ -171,10 +172,9 @@ convergence failure with no attribution.
 file is most prone to: the run succeeds and answers a different question than the one that was
 asked.
 
-**Optimizations are checked against a cheap probe of the box before they start.** A three-node
-build costs a fraction of a second and knows every name the box publishes, so a misspelled
-design variable is a message with suggestions rather than an OpenMDAO error thrown out of
-``setup``.
+**Optimizations are checked against a cheap probe of the box before they start.** A small build
+costs a fraction of a second and knows every name the box publishes, so a misspelled design
+variable is a message with suggestions rather than an OpenMDAO error thrown out of ``setup``.
 
 **Results are read whole.** Every discipline's responses are collected on every run, not
 whichever few a caller asked for. That is what makes a run report complete and two runs
@@ -192,31 +192,35 @@ whole package:
 
 ``test_cdadt_has_no_class_level_mutable_state``
     No class carries a mutable class attribute. Immutable class attributes -- the ownership
-    patterns, the response tuples, :data:`~cdadt.certification.SHIPPED_REQUIREMENTS` -- are the
+    patterns, the response tuples, the allowed-key tuples on every config section -- are the
     intended way to declare what a class *is*, and are unaffected.
 
 Everything a discipline, an aircraft, a mission or an analysis holds is instance state, reached
 through properties that validate what they are given.
 
-**This cost a design change, which is the point of testing it.** An earlier version gave
-:class:`~cdadt.certification.Requirement` a class-level ``registry`` dictionary, populated by
+**This cost two design changes, which is the point of testing it.** An earlier version gave a
+``Requirement`` base class a class-level ``registry`` dictionary, populated by
 ``__init_subclass__``, so that declaring a subclass made its ``kind`` nameable in a case file.
 Convenient, and shared mutable state: two studies in one process shared one registry, defining a
 class anywhere mutated it, and what a case file resolved to depended on what happened to have
-been imported. It is now :class:`~cdadt.certification.RequirementCatalog`, which holds the same
-mapping as *instance* state:
+been imported.
+
+The fix went further than moving the mapping onto an instance. There is no requirement class
+hierarchy at all now. A constraint is a bound on a named quantity plus its provenance --
+:class:`~cdadt.certification.Constraint` -- and the set a design is held to is a
+:class:`~cdadt.certification.CertificationBasis` built from the case file's own ``constraints``
+list. Nothing has to be registered, subclassed or imported to make a new one nameable, because
+there is nothing to name: the quantity is a response the disciplines already report, and the
+regulation is a string in the YAML.
 
 .. code-block:: python
 
-   from cdadt import RequirementCatalog, SHIPPED_REQUIREMENTS
+   from cdadt import CertificationBasis, Constraint
 
-   default = RequirementCatalog()                                   # the shipped types
-   wider = RequirementCatalog([*SHIPPED_REQUIREMENTS, MyRequirement])  # plus your own
-   Optimizer(analysis, requirements=wider)
+   basis = CertificationBasis.from_specs(config.constraints, catalog)
 
-Two catalogues are independent, a duplicate ``type`` is refused by name rather than resolved by
-letting the later class win, and defining a requirement class changes nothing until a catalogue
-is asked to include it.
+Two bases are independent, and a duplicate constraint name is refused by name rather than
+resolved by letting the later one win -- which is what OpenMDAO would otherwise do silently.
 
 The only module-level *functions* in the package are argument parsing in :mod:`cdadt.cli` and
 case-file validation helpers in :mod:`cdadt.config`. Neither performs a discipline calculation --

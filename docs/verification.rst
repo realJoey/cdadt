@@ -20,9 +20,10 @@ solves each phase duration against a target on that same grid. Every result ther
 discretization error, and a number quoted without knowing that error is a number quoted without
 knowing how many of its digits mean anything.
 
-Run at a uniform solver tolerance of 1e-8 on every grid, so that only discretization varies.
-Comparing grids converged to different residuals is the most common way a grid study reaches a
-wrong conclusion.
+Run at a uniform solver tolerance of 1e-9 on every grid -- the tolerance the shipped cases
+request, which every grid reaches -- so that only discretization varies. Comparing grids
+converged to different residuals is the most common way a grid study reaches a wrong
+conclusion.
 
 .. list-table:: Grid refinement, shipped B738 sizing case
    :header-rows: 1
@@ -69,7 +70,7 @@ ratio of two,
 
 .. math::
 
-   p = \frac{\ln\bigl((f_{21} - f_{41}) / (f_{41} - f_{81})\bigr)}{\ln 2} \approx 4.6
+   p = \frac{\ln\bigl((f_{21} - f_{41}) / (f_{41} - f_{81})\bigr)}{\ln 2} \approx 4.7
 
 Simpson's rule is fourth order. Measuring about that is what says the integration is behaving as
 designed rather than agreeing by accident; measuring first order would mean something in the
@@ -94,12 +95,15 @@ that state is indistinguishable from a converged one in a results table. The tes
 it confirms the balanced field is *not* balanced in that state -- which is exactly how a
 non-converged run betrays itself.
 
-**The achievable residual floor is about 1e-9, and it does not depend on the grid.** Measured,
-not assumed: 1e-7, 1e-8 and 1e-9 are reachable; 1e-10 is not, at any grid tried. That single
-measurement explains two things at once -- why the shipped cases request exactly 1e-9, and why
-the grid study above runs at 1e-8. At 1e-9 the 31- and 41-node grids stall at a residual of
-about 9e-9 and are correctly reported as non-converged. That is a tolerance sitting on a floor,
-not a physics failure, and discovering it is why the grid study is run one decade looser.
+**The shipped tolerance has three decades of margin, and this was re-measured after the
+case-file rewrite.** Every tolerance probed down to 1e-12 is reachable at 11 nodes. That is a
+change: an earlier case-file layout stalled at about 9e-9 on the 31- and 41-node grids, and this
+page previously reported that stall as an absolute floor of the box. It was not. The difference
+is that the ground-roll true-airspeed seeds are now ordinary initial conditions, re-applied
+before every continuation rung and before the design run, where the earlier layout wrote them
+once at the start. The shipped 1e-9 therefore sits well clear of anything, which is why the grid
+study above can refine at the tolerance the results are actually produced at rather than one
+decade looser.
 
 **The answer does not depend on how tightly it was converged.** Between 1e-7 and 1e-9 the
 residual falls by two orders of magnitude and no reported quantity moves by more than 1e-7
@@ -129,13 +133,13 @@ Checked against finite differences of the converged model at three step sizes:
      - Worst relative error
      - Limited by
    * - 1e-5
-     - 4.95e-04
+     - 4.92e-04
      - truncation
    * - **1e-6**
-     - **8.86e-05**
+     - **1.10e-04**
      - **minimum**
    * - 1e-7
-     - 7.18e-04
+     - 9.13e-04
      - round-off
 
 Three step sizes rather than one, because a single one cannot distinguish a correct derivative
@@ -189,8 +193,8 @@ is reconverged at the perturbed design, and the objective and the full certifica
 re-evaluated. Around a genuine constrained minimum every feasible direction must either fail to
 improve the objective or leave the feasible set, and that is what is observed.
 
-**The active set is checked for honesty** as well: a requirement the report labels ACTIVE must
-really sit on its limit, and one labelled MET must not. The traceability matrix is the artefact a
+**The active set is checked for honesty** as well: a constraint the report labels ACTIVE must
+really sit on its bound, and one labelled MET must not. The traceability matrix is the artefact a
 certification argument is built from, and a mislabelled row would be wrong in the one place a
 reader looks.
 
@@ -240,7 +244,7 @@ moment OpenConcept was imported -- exactly the failure :doc:`install` warns abou
 by the file meant to prevent it. Note the failure mode: the interpreter dies, so ``pytest``
 terminates mid-collection with a fatal exception instead of reporting a failed test.
 
-With both fixed, a from-scratch environment runs **187 of 187 tests** and reproduces every
+With both fixed, a from-scratch environment ran the whole suite green and reproduced every
 documented number to all printed digits -- MTOW 78345.6435 kg, fuel with reserves 18597.3177 kg,
 balanced field length 5247.7948 ft. The verification environment was then removed; the recipe,
 not the environment, is the artefact.
@@ -259,23 +263,23 @@ statement about what has actually been established:
      - Count
      - Claim
    * - ``unit``
-     - 140
+     - 159
      - One cdadt class behaves as specified, with no model built
    * - ``contract``
      - 14
      - The cdadt/OpenConcept boundary and the ownership map hold
    * - ``integration``
-     - 34
+     - 41
      - A real OpenConcept model builds, converges and is driven
    * - ``verification``
-     - 41
+     - 39
      - The equations are solved right: grid, solver, derivatives, reproducibility, optimality, consistency
    * - ``validation``
      - 19
      - The right equations were solved: against the reference example, and against physical reality
    * - **total**
-     - **246**
-     - ~3 minutes; ``-m "not slow"`` runs the fast loop
+     - **272**
+     - ~8 minutes; ``-m "not slow"`` runs 216 of them in under two
 
 Coverage
 --------

@@ -27,9 +27,12 @@ black box's interface — which variables its domain sets, which responses its d
 and ownership is checked to be total and disjoint against the *live* model, all 241 settable
 variables of it. No global state, no module-level cache, no free function doing discipline work.
 
-**A study is a file.** The aircraft, the mission, the continuation ladder, the design variables,
-the objective and the certification requirements are all declared in one YAML case file. Two
-studies that ask different questions of the same aeroplane differ only in data.
+**A study is a file.** Every design variable, everything written into the box before it is
+converged, the continuation ladder, the driver, the objective and the certification constraints
+are all declared in one YAML case file, laid out block for block like OpenConcept's own `B738.py`
+run script. A variable becomes free for the optimizer by gaining an `optimize:` entry where it is
+already declared, so two studies that ask different questions of the same aeroplane differ only
+in data — and never disagree about a number.
 
 ## The black box is the only one it could have been
 
@@ -42,11 +45,11 @@ result, not a preference — see `docs/openconcept.rst`.
 
 | Study | Result |
 |---|---|
-| **Grid convergence** | Observed order **4.6** (Simpson's rule is 4th order); shipped 21-node grid converged to **1e-6** |
-| **Total derivatives** | Agree with finite differences to **8.9e-5**, with the textbook truncation/round-off minimum at step 1e-6 |
-| **Solver floor** | Measured at **1e-9**, grid-independent — which is why 1e-9 is requested and 1e-10 is not reachable |
+| **Grid convergence** | Observed order **4.7** (Simpson's rule is 4th order); shipped 21-node grid converged to **1e-6** |
+| **Total derivatives** | Agree with finite differences to **1.1e-4**, with the textbook truncation/round-off minimum at step 1e-6 |
+| **Solver tolerance** | Every tolerance probed down to **1e-12** is reachable on every grid, so the shipped 1e-9 has three decades of margin |
 | **Reproducibility** | Three different continuation ladders reach the same aircraft to **1e-7**; reruns are bit-identical |
-| **Environment** | Rebuilt from scratch out of `environment.yml`; 187/187 pass and every number reproduces |
+| **Environment** | Rebuilt from scratch out of `environment.yml`; the suite passes and every number reproduces |
 | **Optimality** | No feasible ±2% perturbation of any design variable improves the objective |
 | **Coverage** | **100%** of statements and branches, enforced, no exclusion list |
 
@@ -76,24 +79,29 @@ narrow-body transport occupies.
 ## Optimized against a certification basis
 
 Minimizing fuel with reserves over the wing planform and the engine rating, subject to 14 CFR
-25.113, 25.121(b)(1)(i) and the engine deck's throttle limits:
+25.113, 25.121(b)(1)(i) and the engine deck's throttle band:
 
 | Quantity | Baseline | Optimum | Change |
 |---|---|---|---|
-| Fuel with reserves (kg) | 18,596.8 | 15,991.4 | **−14.0%** |
-| Maximum takeoff weight (kg) | 78,345.0 | 71,959.3 | −8.2% |
-| Engine rating (lbf) | 27,000 | 21,911 | −18.9% |
+| Fuel with reserves (kg) | 18,596.8 | 15,914.6 | **−14.4%** |
+| Maximum takeoff weight (kg) | 78,345.0 | 71,340.0 | −8.9% |
+| Engine rating (lbf) | 27,000 | 20,774.5 | −23.1% |
 
-Four of four requirements met, one active — the climb throttle limit. That is the constraint
-that shaped the design: not the runway, and not the second-segment climb gradient, both of which
-keep large margins.
+Four of four constraints met, one active — the climb throttle band. Neither certification
+constraint binds: the runway keeps 1,413 ft of margin and the second-segment gradient more than
+double its minimum. Three of the five design variables end on a bound, which is the bounds doing
+the modelling and is called out as such in `docs/optimization.rst`.
 
 ```
-regulation               requirement                                          value       limit      margin  units  status
-14 CFR 25.113            Balanced field length within the runway available  6263.7147  8000.0000  1736.2853  ft     MET
-14 CFR 25.121(b)(1)(i)   OEI second-segment climb gradient                     0.0554     0.0240     0.0314  rad    MET
-design                   Throttle within the engine deck's range in climb      1.0000     1.0000    -0.0000  -      ACTIVE
-design                   Throttle within the engine deck's range in cruise     0.8287     1.0000     0.1713  -      MET
+regulation              constraint                                             value        bound      margin  units  status
+---------------------------------------------------------------------------------------------------------------------------
+14 CFR 25.113           Balanced field length within the runway available  6587.1294      <= 8000  1412.8706   ft     MET
+14 CFR 25.121(b)(1)(i)  OEI second-segment climb gradient                     0.0501     >= 0.024     0.0261   rad    MET
+-                       Climb throttle within the engine deck                 1.0500 0.01 to 1.05     0.0000   -      ACTIVE
+-                       Cruise throttle within the engine deck                0.8691 0.01 to 1.05     0.1809   -      MET
+
+Design constraints with no stated regulation or source: climb_throttle, cruise_throttle.
+These bound the design; they are not certification evidence.
 ```
 
 **Read `docs/validation.rst` before quoting any of this.** It states what has been established
@@ -127,16 +135,18 @@ cdadt size cases/b738.yaml                        # ~5 s at 21 nodes per phase
 cdadt optimize cases/b738_optimization.yaml       # ~2 min
 cdadt inspect cases/b738.yaml --what inputs       # what the box accepts
 
-pytest -q -m "not slow"                           # the fast loop
-pytest -q                                         # 246 tests, ~3 min
+cdadt size cases/b738.yaml --outputs b738_out     # + n2.html, trajectory.pdf, report.txt, results.json
+
+pytest -q -m "not slow"                           # the fast loop, 216 tests, ~2 min
+pytest -q                                         # 272 tests, ~8 min
 pytest -q --cov=cdadt                             # and 100% statement + branch coverage
 pytest -q -m verification                         # grid, derivatives, solver, reproducibility
 pytest -q -m validation                           # reference match + physical checks
 cd docs && make html
 ```
 
-Tests are marked by the class of claim they make — `unit` (140), `contract` (14),
-`integration` (34), `verification` (39), `validation` (19) — so "the suite passes" is a
+Tests are marked by the class of claim they make — `unit` (143), `contract` (14),
+`integration` (35), `verification` (39), `validation` (19) — so "the suite passes" is a
 statement about what has been established, not one undifferentiated green tick.
 
 Coverage is **100% of statements and branches**, enforced by `fail_under = 100`, with no
@@ -151,13 +161,14 @@ cdadt/
   parameters.py     Parameter, Response — the two value objects
   disciplines/      one class per engineering domain, each owning its slice of the interface
   aircraft.py       Aircraft — composes the disciplines, routes every ac| name to one owner
-  mission.py        MissionProfile, PhaseSchedule, ContinuationStep
+  mission.py        InitialConditions, ContinuationLadder, ContinuationStep
   blackbox.py       OpenConceptSizingBox — loaded by name, set, converged, read
   config.py         the case file, validated hard
   analysis.py       SizingAnalysis — build, converge, read
   results.py        ResponseCatalog, SizingResults
-  certification.py  Requirement, CertificationBasis, the traceability matrix
+  certification.py  Constraint, ConstraintResult, CertificationBasis, the traceability matrix
   optimization.py   Optimizer, OptimizationOutcome
+  artifacts.py      StudyArtifacts, MissionTrajectory — the N2, the trajectory plot, the report
   cli.py            cdadt size | optimize | inspect
 cases/              b738.yaml, b738_optimization.yaml
 examples/           size_b738.py, optimize_b738.py
@@ -171,14 +182,15 @@ docs/               Sphinx
 |---|---|
 | `install.rst` | Environment setup, and why each flag is required |
 | `quickstart.rst` | The three commands and what they print |
-| `tutorials.rst` | Change the aircraft, the mission, the question; add a requirement or a discipline |
+| `tutorials.rst` | Change the aircraft, the mission, the question; free a variable, add a constraint or a discipline |
 | `architecture.rst` | The classes, what each owns, and the tests that enforce the rules |
 | `blackbox.rst` | Exactly what "black box" means, what goes in, what comes out, what is fixed inside |
 | `configuration.rst` | Every key of the case file |
-| `mission.rst` | The profile, and why the continuation ladder is part of the interface |
-| `certification.rst` | Requirements, provenance, the traceability matrix, what cannot be constrained |
+| `mission.rst` | The initial conditions, and why the continuation ladder is part of the interface |
+| `certification.rst` | Constraints, provenance, the traceability matrix, what cannot be constrained |
 | `optimization.rst` | Design variables, scaling, driver choice, and why IPOPT |
-| `verification.rst` | Grid convergence, derivative accuracy, solver floor, reproducibility, optimality |
+| `artifacts.rst` | The files `--outputs` writes, and what is plotted |
+| `verification.rst` | Grid convergence, derivative accuracy, solver tolerance, reproducibility, optimality |
 | `validation.rst` | What is validated, against what, **and what is not** |
 | `openconcept.rst` | The survey of all ~30,000 lines, and why this black box is the only candidate |
 | `interface.rst` | The generated input/output reference |

@@ -1,20 +1,20 @@
 Tutorials
 =========
 
-Five things a study actually needs to do, in increasing order of how much code they take. The
-first three take none.
+Six things a study actually needs to do, in increasing order of how much code they take. The
+first four take none.
 
 1. Change the aircraft
 ----------------------
 
-Copy ``cases/b738.yaml``, edit the numbers, run it. Everything in the ``aircraft`` section is a
+Copy ``cases/b738.yaml``, edit the numbers, run it. Everything in ``design_variables`` is a
 design parameter, and the black box is a *sizing* model -- empirical weight and drag buildups
 and a rubberized engine -- so a changed parameter produces a consistent clean-sheet design
 rather than an inconsistent 737.
 
 .. code-block:: yaml
 
-   aircraft:
+   design_variables:
      ac|geom|wing|AR:
        value: 11.5                       # was 9.45
        source: Design study, higher aspect ratio wing
@@ -31,17 +31,16 @@ Keep the ``source`` field truthful as you edit. It is what separates a design de
 leftover.
 
 If a parameter name is wrong, cdadt says so before anything runs, and suggests the nearest
-match. ``cdadt inspect`` lists all 34.
+match. ``cdadt inspect`` lists everything the box accepts.
 
 2. Change the mission
 ---------------------
 
 .. code-block:: yaml
 
-   mission:
-     parameters:
-       mission_range: {value: 3500, units: nmi}     # was 2800
-       cruise|h0:     {value: 37000, units: ft}     # was 35000
+   initial_conditions:
+     mission_range: {value: 3500, units: nmi}     # was 2800
+     cruise|h0:     {value: 37000, units: ft}     # was 35000
 
 Watch the continuation ladder when you make the mission substantially harder. Its job is to walk
 the solver from something easy to the design mission, and the shipped ladder was built for a
@@ -49,102 +48,89 @@ the solver from something easy to the design mission, and the shipped ladder was
 
 .. code-block:: yaml
 
-     continuation:
-       - description: short range at low altitude, gentle descent
-         parameters:
-           mission_range: {value: 500, units: nmi}
-           cruise|h0:     {value: 5000, units: ft}
-           reserve_range: {value: 100, units: nmi}
-           reserve|h0:    {value: 1000, units: ft}
-         schedule:
-           descent: {Ueas: {value: [252, 250], units: kn}, vs: {value: -800, units: ft/min}}
+   continuation:
+     - description: short range at low altitude, gentle descent
+       initial_conditions:
+         mission_range:      {value: 500, units: nmi}
+         cruise|h0:          {value: 5000, units: ft}
+         reserve_range:      {value: 100, units: nmi}
+         reserve|h0:         {value: 1000, units: ft}
+         descent.fltcond|vs: {value: -800, units: ft/min}
 
-       - description: half range at intermediate altitude          # <- new rung
-         parameters:
-           mission_range: {value: 1800, units: nmi}
-           cruise|h0:     {value: 25000, units: ft}
-         schedule:
-           descent: {Ueas: {value: [252, 250], units: kn}, vs: {value: -800, units: ft/min}}
+     - description: half range at intermediate altitude          # <- new rung
+       initial_conditions:
+         mission_range:      {value: 1800, units: nmi}
+         cruise|h0:          {value: 25000, units: ft}
+         descent.fltcond|vs: {value: -800, units: ft/min}
 
-       - description: design range and altitude, gentle descent
-         schedule:
-           descent: {Ueas: {value: [252, 250], units: kn}, vs: {value: -800, units: ft/min}}
+     - description: design range and altitude, gentle descent
+       initial_conditions:
+         descent.fltcond|vs: {value: -800, units: ft/min}
 
-Run with ``-v`` to watch each rung as it converges. See :doc:`mission`.
+A rung overrides only what it names; the case's own ``initial_conditions`` are re-applied
+underneath it every time. Run with ``-v`` to watch each rung as it converges. See :doc:`mission`.
 
-3. Ask a different question of the same aeroplane
+3. Free a design variable
+-------------------------
+
+A sizing case becomes an optimization by adding an ``objective`` and putting ``optimize:`` on the
+variables the driver may move. The variable stays exactly where it was declared:
+
+.. code-block:: yaml
+
+   design_variables:
+     ac|geom|wing|AR:
+       value: 9.45
+       source: b737.org.uk technical specifications
+       optimize: {lower: 7.0, upper: 13.0}       # <- the only line added
+
+   objective: {name: total_fuel, units: kg, sense: minimize, ref: 2.0e4}
+
+Delete the ``optimize:`` line and the variable is fixed again at the same value, from the same
+source. Nothing moves between sections, so a sizing run and an optimization of the same aeroplane
+cannot drift apart.
+
+4. Ask a different question, and add a constraint
 -------------------------------------------------
 
-Two studies of one aircraft differ only in their ``optimization`` section. To minimize maximum
-takeoff weight instead of fuel, over span alone, subject to the field length:
+To minimize maximum takeoff weight instead of fuel, over span alone, on a shorter runway:
 
 .. code-block:: yaml
 
-   optimization:
-     driver: {name: IPOPT, maxiter: 40, tol: 1.0e-6, derivative_mode: fwd}
-     objective: {name: MTOW, units: kg, sense: minimize, ref: 8.0e4}
-     design_variables:
-       - {name: ac|geom|wing|AR, lower: 7.0, upper: 13.0}
-     requirements:
-       - type: balanced_field_length
-         limit: 7000.0
-         units: ft
-         regulation: 14 CFR 25.113
-         source: Shorter runway, 7000 ft dry at sea level, ISA
+   driver: {name: IPOPT, maxiter: 40, tol: 1.0e-6, derivative_mode: fwd}
 
-Nothing else changes, and nothing in Python changes. See :doc:`optimization`.
+   objective: {name: MTOW, units: kg, sense: minimize, ref: 8.0e4}
 
-4. Add a certification requirement
-----------------------------------
+   constraints:
+     - name: takeoff_field_length
+       upper: 7000.0
+       units: ft
+       regulation: 14 CFR 25.113
+       source: Shorter runway, 7000 ft dry at sea level, ISA
+       title: Balanced field length within the runway available
 
-If the quantity is already reported, the case file is enough -- use the generic
-``response_limit``:
+Any quantity the disciplines report can be constrained the same way -- there is no requirement
+type to look up and no Python to write, because a constraint *is* a bound on a named response
+plus its provenance:
 
 .. code-block:: yaml
 
-     requirements:
-       - type: response_limit
-         response: total_fuel
-         sense: upper
-         limit: 20000.0
-         units: kg
-         regulation: design
-         source: Usable fuel volume of the wing box as laid out
+     - name: MLW
+       upper: 66360.0
+       units: kg
+       regulation: 14 CFR 25.473
+       source: Boeing 737-800 certificated maximum landing weight
+       title: Landing weight within the structural limit
 
-For a requirement you will state repeatedly, give it a class so the sense and the response
-cannot be got wrong:
+     - name: total_fuel
+       upper: 20000.0
+       units: kg
+       regulation: design
+       source: Usable fuel volume of the wing box as laid out
 
-.. code-block:: python
-
-   from typing import ClassVar
-
-   from cdadt import Requirement
-
-
-   class MaximumLandingWeight(Requirement):
-       """Landing weight must not exceed the certificated structural limit."""
-
-       kind: ClassVar[str] = "maximum_landing_weight"
-       response: ClassVar[str] = "MLW"
-       sense: ClassVar[str] = "upper"
-       title: ClassVar[str] = "Maximum landing weight within the structural limit"
-
-Then hand the optimizer a catalogue that includes it, and ``type: maximum_landing_weight`` works
-in a case file:
-
-.. code-block:: python
-
-   from cdadt import Optimizer, RequirementCatalog, SHIPPED_REQUIREMENTS
-
-   optimizer = Optimizer(
-       analysis,
-       requirements=RequirementCatalog([*SHIPPED_REQUIREMENTS, MaximumLandingWeight]),
-   )
-
-The class fixes the physics and leaves the number, its regulation and its source to the case.
-The catalogue step is deliberate rather than automatic: registering subclasses on definition
-would be shared mutable state, which the package does not have and the suite forbids. See
-:doc:`architecture` and :doc:`certification`.
+``regulation: design`` is the honest label for a programme decision or a modelling limit rather
+than a rule. Leave both fields out entirely and the constraint still applies -- it is reported as
+a design constraint rather than as certification evidence. See :doc:`certification`.
 
 If the quantity you need is *not* something the black box publishes, stop. Adding a calculation
 to cdadt to produce it is exactly what the boundary exists to prevent; the gap belongs in

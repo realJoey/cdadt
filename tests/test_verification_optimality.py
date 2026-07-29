@@ -10,7 +10,7 @@ direction must either fail to improve the objective or leave the feasible set. T
 perturbs each design variable in both directions and checks precisely that.
 
 It runs on a deliberately small study -- one design variable, a narrow interval, one
-requirement -- because the property being tested is a property of the optimizer and the
+constraint -- because the property being tested is a property of the optimizer and the
 derivative chain, not of the design space, and testing it cheaply means it can be tested at all.
 """
 
@@ -28,7 +28,6 @@ PERTURBATION = 0.02
 #: The objective is allowed to improve by at most this much under perturbation before the point
 #: is judged not to be an optimum. Sized above the solver's own noise floor.
 IMPROVEMENT_TOLERANCE = 1e-6
-
 
 #: The one variable freed, and the interval it is free over.
 FREED = "ac|geom|wing|AR"
@@ -77,7 +76,7 @@ def test_no_feasible_perturbation_of_a_design_variable_improves_the_objective(op
 
     For each design variable, step it up and down, reconverge the black box at the perturbed
     design, and require that the objective either got worse, or that the step left the variable
-    outside its own bounds, or that it violated a requirement. An improving feasible direction
+    outside its own bounds, or that it violated a constraint. An improving feasible direction
     would mean the reported optimum is not one.
     """
     optimizer, outcome = optimized
@@ -129,9 +128,9 @@ def test_the_active_set_is_reported_honestly(optimized):
     _optimizer, outcome = optimized
     for result in outcome.constraints:
         if result.active:
-            assert abs(result.relative_margin) <= result.ACTIVE_TOLERANCE, (
-                f"{result.constraint.name} is reported ACTIVE with relative margin " f"{result.relative_margin:.2e}"
-            )
+            assert (
+                abs(result.relative_margin) <= result.ACTIVE_TOLERANCE
+            ), f"{result.constraint.name} is reported ACTIVE with relative margin {result.relative_margin:.2e}"
         elif result.satisfied:
             assert (
                 result.relative_margin > result.ACTIVE_TOLERANCE

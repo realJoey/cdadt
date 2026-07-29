@@ -6,78 +6,87 @@ but constraints on the search, and where every one of them can be traced from a 
 through a number with a stated source, to the quantity that was actually evaluated. That chain
 is what this part of cdadt exists to produce.
 
-How a requirement is stated
----------------------------
+How a constraint is stated
+--------------------------
+
+A constraint is one ``prob.model.add_constraint(...)`` call -- exactly what OpenConcept's own
+optimizing examples write -- plus two fields those examples have nowhere to put:
 
 .. code-block:: yaml
 
-   requirements:
-     - type: engine_out_climb_gradient
-       limit: 0.024
+   constraints:
+     - name: engine_out_climb_gradient
+       lower: 0.024
        units: rad
        regulation: 14 CFR 25.121(b)(1)(i)
        source: Two-engine aeroplane, 2.4% second-segment minimum
+       title: OEI second-segment climb gradient
 
-``regulation`` and ``source`` are **required**, at construction as well as in the case file. The
-limit itself is never a default: which runway, which aerodrome, which aeroplane class and which
-engine count belong to the operating case, not to the code. A constraint that cannot name where
-its number came from is a constraint nobody can defend, and this tool exists to produce reports
-that get argued from.
+     - name: climb_throttle
+       lower: 0.01
+       upper: 1.05
+       title: Climb throttle within the engine deck
 
-Use ``regulation: design`` for a programme decision or a modelling limit rather than a rule, and
-say which in ``source``. A design decision presented as a regulation is worse than no citation.
+Both are legal, and they are different kinds of thing. A constraint that names a regulation
+*and* a source is certification evidence and appears in the traceability matrix as such. One
+that names neither is a design constraint, and the matrix says so rather than implying every row
+is defensible against a rule.
 
-What each requirement class constrains
---------------------------------------
+Neither field is ever supplied by default. Which runway, which aerodrome, which aeroplane class
+and which engine count belong to the operating case, not to the code. Use ``regulation: design``
+for a programme decision or a modelling limit rather than a rule, and say which in ``source``: a
+design decision presented as a regulation is worse than no citation.
+
+What may be constrained
+-----------------------
+
+Anything the black box publishes. A constraint's ``name`` is either one of the response names
+the disciplines report -- the full list is in :doc:`interface` -- or a raw path inside the box.
+The ones a certification argument is normally built from:
 
 .. list-table::
    :header-rows: 1
-   :widths: 26 10 30 34
+   :widths: 30 12 58
 
-   * - ``type``
+   * - ``name``
      - Sense
-     - Evaluated on
      - Notes
-   * - ``balanced_field_length``
-     - upper
-     - ``takeoff_field_length``
+   * - ``takeoff_field_length``
+     - ``upper``
      - 14 CFR 25.113. The limit is the runway available, at the altitude and temperature
        intended.
    * - ``engine_out_climb_gradient``
-     - lower
-     - ``engine_out_climb_gradient``
+     - ``lower``
      - 14 CFR 25.121(b): 2.4% two engines, 2.7% three, 3.0% four. See the warning below.
-   * - ``throttle_limit``
-     - upper
-     - ``<phase>_throttle``
-     - Not a regulation. The range the engine deck is fitted over. Requires a ``phase`` option.
-   * - ``maximum_takeoff_weight``
-     - upper
-     - ``MTOW``
+   * - ``MTOW``
+     - ``upper``
      - A type-certificate structural limit.
-   * - ``design_range``
-     - lower
-     - ``mission_range_flown``
-     - Normally satisfied by construction; see the note below before using it.
-   * - ``response_limit``
-     - either
-     - any response
-     - The escape hatch. Requires ``response`` and ``sense`` options.
+   * - ``mission_range_flown``
+     - ``lower``
+     - Normally satisfied by construction: the mission is flown to the range the case asks for.
+   * - ``climb_throttle``, ``cruise_throttle``, ``descent_throttle``
+     - band
+     - Not a regulation. The range the engine deck is fitted over. Written as a two-sided bound,
+       exactly as ``B738_aerostructural.py`` writes it.
 
-Vector responses -- a throttle history has one value per node -- are one requirement, not
-twenty-one. The whole history is constrained, and the node that governs is reported: the largest
-for an upper limit, the smallest for a lower one.
+Every form ``add_constraint`` accepts is expressible: one-sided, two-sided, equality, with any of
+OpenMDAO's ``indices``, ``linear`` and scaling arguments. Nothing is interpreted on the way
+through -- see :doc:`configuration` for the full key list.
 
-Constraints are scaled by their own limit before being handed to the optimizer. Without that, a
-climb gradient in hundredths of a radian is numerically invisible next to a field length in
-thousands of feet.
+Vector responses -- a throttle history has one value per node -- are one constraint, not
+twenty-one. The whole history is constrained, and the node that governs is reported: for a band,
+the node of least margin on either side; for a one-sided bound, the extreme value.
+
+Constraints are scaled by the magnitude of their own bound before being handed to the optimizer.
+Without that, a climb gradient in hundredths of a radian is numerically invisible next to a field
+length in thousands of feet.
 
 .. warning::
 
    **The engine-out climb gradient is evaluated clean.** 14 CFR 25.121(b) specifies the
    second-segment gradient with the landing gear retracted *and the takeoff flaps set*. The
    black box evaluates its engine-out climb condition in the clean configuration, which
-   produces less drag and therefore a higher gradient. The number this requirement constrains is
+   produces less drag and therefore a higher gradient. The number this constraint bounds is
    consequently optimistic against the regulation as written.
 
    cdadt does not correct it. Correcting it would mean changing what the box computes, which is
@@ -87,9 +96,9 @@ thousands of feet.
 What cannot be constrained, and why
 -----------------------------------
 
-Every requirement is a function of quantities the box publishes. That is a real limit, and it
-is the honest one: cdadt does not compute physics, so it cannot enforce a regulation whose
-governing quantity the box does not produce.
+Every constraint is a bound on a quantity the box publishes. That is a real limit, and it is the
+honest one: cdadt does not compute physics, so it cannot enforce a regulation whose governing
+quantity the box does not produce.
 
 The clearest example is **reference landing approach speed**, §25.125 and the approach-category
 limits that go with it. It needs the reference stall speed at maximum landing weight in the
@@ -106,87 +115,74 @@ tank capacity.
 Reading the result
 ------------------
 
-Each evaluated requirement reports a margin defined so that its sign means the same thing
-either way: ``limit - value`` for an upper limit, ``value - limit`` for a lower one. Positive is
-compliant. Three statuses:
+Each evaluated constraint reports a margin defined so that its sign means the same thing whatever
+form the bound takes: ``upper - value`` for an upper limit, ``value - lower`` for a lower one,
+whichever is smaller for a band, and ``-|value - equals|`` for an equality. Positive is compliant.
+Three statuses:
 
 ``MET``
     Satisfied with margin.
 
 ``ACTIVE``
-    Satisfied and sitting on the limit, within 0.01% of it. An active requirement is one that
+    Satisfied and sitting on the bound, within 0.01% of it. An active constraint is one that
     shaped the design, and that is the most interesting row in the table.
 
 ``VIOLATED``
-    Not satisfied. An optimization that ends with any violated requirement is reported as not
+    Not satisfied. An optimization that ends with any violated constraint is reported as not
     having succeeded, whatever the driver said.
 
 The traceability matrix
 -----------------------
 
-The artefact the module exists to produce. Every requirement, the regulation behind it, the
-number and where that number came from, the value achieved, the margin and the status:
+The artefact the module exists to produce. Every constraint, the regulation behind it, the number
+and where that number came from, the value achieved, the margin and the status. The two kinds are
+separated at the bottom, so a reader is never left inferring which rows are evidence:
 
 .. code-block:: text
 
-   regulation               requirement                                          value       limit      margin  units  status
-   ------------------------------------------------------------------------------------------------------------------------
-   14 CFR 25.113            Balanced field length within the runway available  6263.7147  8000.0000  1736.2853  ft     MET
-   14 CFR 25.121(b)(1)(i)   OEI second-segment climb gradient                     0.0554     0.0240     0.0314  rad    MET
-   design                   Throttle within the engine deck's range in climb      1.0000     1.0000    -0.0000  -      ACTIVE
-   design                   Throttle within the engine deck's range in cruise     0.8287     1.0000     0.1713  -      MET
+   regulation              constraint                                           value          bound        margin  units  status
+   -------------------------------------------------------------------------------------------------------------------------------
+   14 CFR 25.113           Balanced field length within the runway available  6263.7147   <= 8000.0000  1736.2853   ft     MET
+   14 CFR 25.121(b)(1)(i)  OEI second-segment climb gradient                     0.0554     >= 0.0240     0.0314   rad    MET
+   -                       Climb throttle within the engine deck                 1.0500  0.0100..1.0500    -0.0000  -      ACTIVE
+   -                       Cruise throttle within the engine deck                0.8287  0.0100..1.0500     0.2213  -      MET
 
    Where each limit came from
    --------------------------
-     balanced_field_length (14 CFR 25.113): Design field length, 8000 ft dry runway at sea level, ISA
+     takeoff_field_length (14 CFR 25.113): Design field length, 8000 ft dry runway at sea level, ISA
      engine_out_climb_gradient (14 CFR 25.121(b)(1)(i)): Two-engine aeroplane, 2.4% second-segment minimum
-     throttle_limit_climb (design): The CFM56 surrogate inside the black box is not fitted above throttle 1
-     throttle_limit_cruise (design): The CFM56 surrogate inside the black box is not fitted above throttle 1
 
-   4 of 4 requirements met, 1 active, 0 violated.
+   Design constraints with no stated regulation or source: climb_throttle, cruise_throttle.
+   These bound the design; they are not certification evidence.
+
+   4 of 4 constraints met, 1 active, 0 violated.
 
 ``cdadt optimize <case> --json out.json`` writes the same information as structured data, one
-record per requirement, so a study is archivable without re-running it.
+record per constraint -- including its ``traceable`` flag -- so a study is archivable without
+re-running it.
 
-Adding a requirement
---------------------
+The classes behind it
+---------------------
 
-Subclass :class:`~cdadt.certification.Requirement`, then include it in a
-:class:`~cdadt.certification.RequirementCatalog` so a case file can name it:
+Three, and the division between them is the module's whole design:
 
-.. code-block:: python
+:class:`~cdadt.certification.Constraint`
+    One constraint: what it bounds, where that quantity lives in the box, its provenance, and
+    how to register it on a model and evaluate it against a design.
 
-   from typing import ClassVar
+:class:`~cdadt.certification.ConstraintResult`
+    That constraint evaluated against one converged design: the governing value, the margin, and
+    the status. It owns ``ACTIVE_TOLERANCE``, which is what "sitting on the bound" means.
 
-   from cdadt import Requirement
+:class:`~cdadt.certification.CertificationBasis`
+    The set a design is held to. Refuses duplicate names, registers the whole set on a model,
+    evaluates the whole set against a design, and renders the matrix.
 
+Nothing here knows what a field length *is*. A constraint is a bound on a named quantity plus its
+provenance, and the physics belongs to the black box. That is why adding a new constraint takes
+no Python at all -- it is six lines of YAML -- and why cdadt cannot get the sense of a regulation
+wrong in code that a case file would then be unable to correct.
 
-   class ReserveFuelFraction(Requirement):
-       """Fuel with reserves must exceed block fuel by a stated fraction."""
-
-       kind: ClassVar[str] = "reserve_fuel_fraction"
-       response: ClassVar[str] = "total_fuel"
-       sense: ClassVar[str] = "lower"
-       title: ClassVar[str] = "Fuel with reserves"
-
-.. code-block:: python
-
-   from cdadt import Optimizer, RequirementCatalog, SHIPPED_REQUIREMENTS
-
-   catalog = RequirementCatalog([*SHIPPED_REQUIREMENTS, ReserveFuelFraction])
-   optimizer = Optimizer(analysis, requirements=catalog)
-
-Defining the class is not enough on its own, and that is deliberate. An earlier design registered
-subclasses automatically into a class-level dictionary, which made the set of available
-requirements depend on what had been imported and let one study's classes leak into another's.
-The catalogue is instance state: a study owns its own, and two are independent. See
-:doc:`architecture`.
-
-The class fixes the physics -- which response tests the requirement and which way the inequality
-runs -- and leaves the number, its regulation and its source to the case file. That division is
-the point: the named classes cannot get the sense or the response wrong, which the generic
-``response_limit`` can.
-
-If the quantity you need is not one the box publishes, that is not a gap in cdadt to be filled
-by adding a calculation here. It is a statement about the black box, and it belongs in
+If the quantity you need is not one the box publishes, that is not a gap in cdadt to be filled by
+adding a calculation here. It is a statement about the black box, and it belongs in
 :doc:`validation`.

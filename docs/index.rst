@@ -30,9 +30,10 @@ the black box's interface: which variables its domain sets, and which responses 
 reports. Ownership is total and disjoint, checked against the live model. See
 :doc:`architecture`.
 
-**A study is a file.** The aircraft, the mission, the continuation ladder, the design
-variables, the objective and the certification requirements are all declared in one YAML case
-file. Two studies that ask different questions of the same aeroplane differ only in data. See
+**A study is a file.** Every design variable, everything written into the box before it is
+converged, the continuation ladder, the driver, the objective and the certification constraints
+are all declared in one YAML case file, laid out block for block like OpenConcept's own run
+scripts. Two studies that ask different questions of the same aeroplane differ only in data. See
 :doc:`configuration`.
 
 What it produces
@@ -49,10 +50,10 @@ Fuel with reserves                 18,597.3 kg
 Balanced field length              5,247.8 ft
 =================================  ===============
 
-Optimizing it against 14 CFR 25.113, 25.121(b) and the engine deck's throttle limits, over the
-wing planform and the engine rating, cuts fuel with reserves by 14.0% and maximum takeoff weight
-by 8.2%. The climb throttle limit is the active constraint. See :doc:`optimization` and, for
-what is *not* established, :doc:`validation`.
+Optimizing it against 14 CFR 25.113, 25.121(b) and the engine deck's throttle band, over the
+wing planform and the engine rating, cuts fuel with reserves by 14.4% and maximum takeoff weight
+by 8.9%. The climb throttle band is the active constraint; neither certification constraint
+binds. See :doc:`optimization` and, for what is *not* established, :doc:`validation`.
 
 .. toctree::
    :maxdepth: 2
@@ -72,6 +73,7 @@ what is *not* established, :doc:`validation`.
    mission
    certification
    optimization
+   artifacts
 
 .. toctree::
    :maxdepth: 2

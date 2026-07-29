@@ -17,4 +17,5 @@ design is the way it is; these pages are what the code actually does.
    results
    certification
    optimization
+   artifacts
    cli
