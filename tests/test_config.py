@@ -446,3 +446,112 @@ def test_the_shipped_cases_are_valid_yaml_documents():
     for path in sorted(CASES.glob("*.yaml")):
         with open(path, encoding="utf-8") as handle:
             assert isinstance(yaml.safe_load(handle), dict), path
+
+
+@pytest.mark.unit
+def test_every_scaling_spelling_is_readable_and_reaches_openmdao():
+    """All four keys, not just ``ref``: the other three are what a case file may write instead.
+
+    ``as_kwargs`` is what the driver is actually configured from, so reading the properties is
+    not enough on its own -- the pair has to arrive.
+    """
+    assert Scaling(ref=2.0, ref0=0.5).ref0 == 0.5
+    multiplicative = Scaling(scaler=4.0, adder=-1.0)
+    assert (multiplicative.scaler, multiplicative.adder) == (4.0, -1.0)
+    assert multiplicative.as_kwargs() == {"scaler": 4.0, "adder": -1.0}
+    assert Scaling(ref=2.0, ref0=0.5).as_kwargs() == {"ref": 2.0, "ref0": 0.5}
+
+
+@pytest.mark.unit
+def test_a_design_variable_cannot_be_pinned_to_a_single_value():
+    """``equals`` makes it a constraint, not a variable, and the driver would have nothing to move."""
+    with pytest.raises(ConfigError, match="not by 'equals'"):
+        OptimizeSpec(Bounds(equals=9.45))
+
+
+@pytest.mark.unit
+def test_a_bad_optimize_entry_is_reported_against_the_variable_it_belongs_to():
+    """A case file cannot build a ``Bounds``, so the failure has to be re-raised with its address.
+
+    Both spellings of a bad entry go through that same re-raise: an interval the wrong way round,
+    caught by ``OptimizeSpec``, and two scalings at once, caught by ``Scaling``. An unknown *key*
+    does not -- it is refused earlier, by name, and never reaches the constructor.
+    """
+    with pytest.raises(ConfigError, match=r"'ac\|geom\|wing\|AR\.optimize': .*band is empty"):
+        OptimizeSpec.from_dict({"lower": 13.0, "upper": 7.0}, "ac|geom|wing|AR.optimize")
+    with pytest.raises(ConfigError, match=r"'ac\|geom\|wing\|AR\.optimize': .*not both"):
+        OptimizeSpec.from_dict({"lower": 7.0, "upper": 13.0, "ref": 1.0, "scaler": 2.0}, "ac|geom|wing|AR.optimize")
+
+
+@pytest.mark.unit
+def test_a_vector_variable_can_be_freed_element_by_element():
+    """A schedule may be optimized at some nodes and left alone at others."""
+    spec = OptimizeSpec(Bounds(lower=0.0, upper=1.0), indices=[0, 2])
+
+    assert spec.indices == [0, 2]
+    assert spec.as_kwargs(units=None)["indices"] == [0, 2]
+    # A copy, so a caller cannot reach in and re-free an element through the accessor.
+    spec.indices.append(3)
+    assert spec.indices == [0, 2]
+
+    # And freeing all of them passes no 'indices' at all, rather than passing every index.
+    everything = OptimizeSpec(Bounds(lower=0.0, upper=1.0))
+    assert everything.indices is None
+    assert "indices" not in everything.as_kwargs(units=None)
+
+
+@pytest.mark.unit
+def test_a_free_variable_reports_the_pieces_it_was_built_from():
+    """The bounds and the scaling are read back by the report and the traceability matrix."""
+    scaling = Scaling(ref=100.0)
+    spec = OptimizeSpec(Bounds(lower=90.0, upper=180.0), scaling=scaling)
+
+    assert spec.bounds.describe() == "90 to 180"
+    assert spec.scaling is scaling
+
+
+@pytest.mark.unit
+def test_an_objective_may_be_one_element_of_a_vector_output():
+    """Without an index OpenMDAO refuses a vector objective, so the key has to survive."""
+    spec = ObjectiveSpec("fltcond|CL", index=3)
+
+    assert spec.index == 3
+    assert spec.as_kwargs(None)["index"] == 3
+    assert ObjectiveSpec("total_fuel").index is None
+    assert "index" not in ObjectiveSpec("total_fuel").as_kwargs(None)
+
+
+@pytest.mark.unit
+def test_maximizing_negates_the_whole_affine_map_and_not_only_its_slope():
+    """``ref0`` shifts the objective, so leaving its sign alone would move the optimum."""
+    spec = ObjectiveSpec("range", scaling=Scaling(ref=2.0, ref0=0.5), sense="maximize")
+    arguments = spec.as_kwargs(None)
+
+    assert (arguments["ref"], arguments["ref0"]) == (-2.0, -0.5)
+    assert spec.scaling.ref == 2.0, "the spec itself is not mutated by being read"
+
+
+@pytest.mark.unit
+def test_a_bad_scaling_on_the_objective_is_reported_against_the_objective():
+    """The two spellings are refused by ``Scaling``; the section has to be named in the message."""
+    with pytest.raises(ConfigError, match="'objective': "):
+        ObjectiveSpec.from_dict({"name": "total_fuel", "ref": 1.0, "scaler": 2.0})
+
+
+@pytest.mark.unit
+def test_an_equality_constraint_reaches_openmdao_as_one():
+    """``equals`` is a different keyword, not a degenerate pair of bounds."""
+    assert Bounds(equals=0.024).as_kwargs() == {"equals": 0.024}
+
+
+@pytest.mark.unit
+def test_the_solver_iteration_limit_is_readable(sizing_config):
+    """Read back when a study reports how the box it drove was configured."""
+    assert sizing_config.solver.maxiter == sizing_config.solver.settings().maxiter
+
+
+@pytest.mark.unit
+def test_a_variable_knows_its_own_name(sizing_config):
+    """The name is the key it was declared under, and the report is written from it."""
+    for name, spec in sizing_config.design_variables.items():
+        assert spec.name == name

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import openmdao.api as om
 import pytest
 
 from cdadt import CertificationBasis, Constraint, ConstraintError, ConstraintSpec, ResponseCatalog, Scaling
@@ -244,6 +245,42 @@ def test_a_constraint_scales_itself_by_its_bound_unless_told_otherwise():
     """A gradient in hundredths of a radian is invisible beside a field length in thousands."""
     assert _constraint().spec.bounds.magnitude == 8000.0
     assert _constraint(scaling=Scaling(ref=1.0)).spec.scaling.ref == 1.0
+
+
+@pytest.mark.unit
+def test_registering_a_constraint_declares_it_on_the_group_as_stated():
+    """What the driver is actually given, read back off a real OpenMDAO group.
+
+    Declared on a bare :class:`openmdao.api.Group` rather than a recording double, because the
+    claim is about what OpenMDAO accepts and stores -- a double would only confirm that
+    ``register`` calls a method. Before setup a group keeps these in ``_static_responses``, which
+    is private but is the dependency's own storage; asserting against it is the honest reading.
+
+    Note the bound arrives *scaled*: 8000 ft against a ref of 8000 is 1.0. That is the point of
+    the default scaling, and it is what would be silently lost if ``register`` stopped passing it.
+    """
+    group = om.Group()
+    _constraint().register(group)
+
+    recorded = group._static_responses["takeoff_field_length"]
+    assert recorded["units"] == "ft"
+    assert recorded["upper"] == pytest.approx(1.0)
+    assert recorded["ref"] == pytest.approx(8000.0)
+    assert recorded.get("indices") is None, "a scalar constraint must not be given indices"
+
+
+@pytest.mark.unit
+def test_a_constraint_may_be_applied_to_chosen_nodes_of_a_vector_response():
+    """Throttle is constrained over the whole climb; a case file may name a subset instead.
+
+    Without this the ``indices`` key would parse, be reported, and never reach the driver -- so
+    the constraint would silently apply to every node.
+    """
+    group = om.Group()
+    _constraint(name="climb_throttle", bounds=Bounds(upper=1.05), units=None, indices=[0, 2]).register(group)
+
+    # OpenMDAO wraps them in an indexer of its own, so read the array back out of it.
+    assert group._static_responses["climb_throttle"]["indices"].as_array().tolist() == [0, 2]
 
 
 # =============================================================================================

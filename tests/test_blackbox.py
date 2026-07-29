@@ -180,3 +180,27 @@ def test_a_driver_can_be_attached_when_the_box_is_built():
     driver = om.ScipyOptimizeDriver(optimizer="SLSQP", maxiter=1)
     box.build(driver=driver)
     assert box.problem.driver is driver
+
+
+@pytest.mark.integration
+def test_the_shape_of_a_variable_the_box_does_not_publish_is_read_from_the_model():
+    """Neither settable nor readable, but still addressable -- so the shape comes from the value.
+
+    ``shape_of`` exists to resample an initial condition written as two endpoints onto the grid
+    the box declares, and it answers from ``readable``/``settable`` when it can. Not every
+    addressable name is in either: a promoted input is omitted from both, because the name can
+    reach several components at once. The ground-roll phases carry such names -- OpenConcept
+    promotes the takeoff phases' integrator outputs as inputs of the balanced-field group -- and
+    without this fallback a mission writing to one would fail on a name that plainly exists.
+    """
+    box = OpenConceptSizingBox(MODEL, num_nodes=3, solver=SolverSettings(maxiter=0, err_on_non_converge=False))
+    box.build()
+
+    name = "mission.v0v1.ode_integ_phase.range_final"
+    assert name not in box.readable(), "no longer an unpublished name, so this test is moot"
+    assert name not in box.settable(), "no longer an unpublished name, so this test is moot"
+    assert box.has(name), "the fallback is only reached for a name that is addressable"
+
+    assert box.shape_of(name) == (1,)
+    # And the published path still answers from the declared shape rather than the fallback.
+    assert box.shape_of("mission.climb.fltcond|h") == (3,)
