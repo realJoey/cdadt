@@ -161,7 +161,10 @@ class Optimizer:
         self._analysis = analysis
         self._config = config
         self._catalog: ResponseCatalog = analysis.catalog
-        self._basis = CertificationBasis.from_specs(config.constraints, self._catalog)
+        # The basis belongs to the study, not to the act of optimizing: a sizing run is entitled
+        # to ask whether the aeroplane it converged meets its certification basis, and did not
+        # used to be able to without constructing an Optimizer to do it.
+        self._basis = analysis.certification
         self._baseline_design: dict[str, float] = {}
         self._resolved: dict[str, str] = {}
         self._validate()

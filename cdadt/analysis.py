@@ -27,6 +27,7 @@ import openmdao.api as om
 
 from cdadt.aircraft import Aircraft
 from cdadt.blackbox import OpenConceptSizingBox, RunDirectory
+from cdadt.certification import CertificationBasis
 from cdadt.config import Config
 from cdadt.disciplines import Discipline, Performance
 from cdadt.results import ResponseCatalog, SizingResults
@@ -48,7 +49,7 @@ class SizingAnalysis:
         Where this study writes its files. ``None`` -- the default -- means the box builds its
         problem with reports off and writes nothing, which is what a test or an interface query
         wants. The command line always supplies one.
-    box, aircraft, performance, catalog : optional
+    box, aircraft, performance, catalog, certification : optional
         The collaborators, each defaulting to what the ``config`` describes. They are injectable
         so that the coordinator can be driven against a substitute -- a second black box, or a
         stand-in with no model to build -- without going through a case file to do it.
@@ -70,6 +71,7 @@ class SizingAnalysis:
         aircraft: Aircraft | None = None,
         performance: Performance | None = None,
         catalog: ResponseCatalog | None = None,
+        certification: CertificationBasis | None = None,
     ) -> None:
         self._config = config
         self._box = (
@@ -87,6 +89,11 @@ class SizingAnalysis:
             performance if performance is not None else Performance(config.initial_conditions(), config.continuation)
         )
         self._catalog = catalog if catalog is not None else ResponseCatalog()
+        self._certification = (
+            certification
+            if certification is not None
+            else CertificationBasis.from_specs(config.constraints, self._catalog)
+        )
 
     # -- state ---------------------------------------------------------------------------
 
@@ -114,6 +121,23 @@ class SizingAnalysis:
     def catalog(self) -> ResponseCatalog:
         """The catalogue mapping response names to black-box paths."""
         return self._catalog
+
+    @property
+    def certification(self) -> CertificationBasis:
+        """The certification basis this study is judged against.
+
+        Certification is a domain of the study like any other, and this is the class that
+        encapsulates it. It is deliberately *not* a
+        :class:`~cdadt.disciplines.base.Discipline`: that abstraction means "owns a slice of the
+        black box's variable interface", and certification sets nothing and publishes nothing.
+        It reads quantities the other disciplines report and judges them, which is a different
+        relationship to the box and would be misdescribed by the same base class.
+
+        Owned here rather than by :class:`~cdadt.optimization.Optimizer` so that a sizing run can
+        ask whether the aeroplane it converged actually meets its basis, without an optimization
+        having to happen first.
+        """
+        return self._certification
 
     @property
     def disciplines(self) -> tuple[Discipline, ...]:

@@ -247,40 +247,66 @@ def test_a_constraint_scales_itself_by_its_bound_unless_told_otherwise():
     assert _constraint(scaling=Scaling(ref=1.0)).spec.scaling.ref == 1.0
 
 
-@pytest.mark.unit
-def test_registering_a_constraint_declares_it_on_the_group_as_stated():
-    """What the driver is actually given, read back off a real OpenMDAO group.
+def _registered(*constraints, nodes: int = 3) -> dict:
+    """Register ``constraints`` on a real problem and return what OpenMDAO holds after setup.
 
-    Declared on a bare :class:`openmdao.api.Group` rather than a recording double, because the
-    claim is about what OpenMDAO accepts and stores -- a double would only confirm that
-    ``register`` calls a method. Before setup a group keeps these in ``_static_responses``, which
-    is private but is the dependency's own storage; asserting against it is the honest reading.
+    A stand-in model publishing the two paths the shipped catalogue addresses, so the
+    constraints can be declared exactly as they are on the real box. It is deliberately not a
+    recording double: the claim under test is what *OpenMDAO* accepts and keeps, and a double
+    would only confirm that ``register`` called a method.
+
+    Read through the public :meth:`openmdao.core.group.Group.get_constraints` after ``setup``,
+    which is the same view a driver is configured from.
+    """
+    problem = om.Problem(reports=False)
+    mission = problem.model.add_subsystem("mission", om.Group(), promotes=["*"])
+    # Units matter here: OpenMDAO refuses a constraint stated in feet against a unitless
+    # target, which is itself worth exercising -- the real box publishes the field length in
+    # metres and the case file states 14 CFR 25.113 in feet.
+    mission.add_subsystem(
+        "bfl",
+        om.ExecComp("distance_continue = 1600.0", distance_continue={"units": "m"}),
+        promotes=["*"],
+    )
+    mission.add_subsystem(
+        "climb",
+        om.ExecComp("throttle = 0.5 * setting", throttle=np.ones(nodes), setting=np.ones(nodes)),
+        promotes=["*"],
+    )
+    for constraint in constraints:
+        constraint.register(problem.model)
+    problem.setup()
+    problem.final_setup()
+    return problem.model.get_constraints()
+
+
+@pytest.mark.integration
+def test_registering_a_constraint_declares_it_on_the_model_as_stated():
+    """What the driver is actually given, read back through OpenMDAO's own public accessor.
 
     Note the bound arrives *scaled*: 8000 ft against a ref of 8000 is 1.0. That is the point of
     the default scaling, and it is what would be silently lost if ``register`` stopped passing it.
     """
-    group = om.Group()
-    _constraint().register(group)
+    registered = _registered(_constraint(name="takeoff_field_length", bounds=Bounds(upper=8000.0), units="ft"))
 
-    recorded = group._static_responses["takeoff_field_length"]
+    recorded = registered["takeoff_field_length"]
     assert recorded["units"] == "ft"
     assert recorded["upper"] == pytest.approx(1.0)
     assert recorded["ref"] == pytest.approx(8000.0)
-    assert recorded.get("indices") is None, "a scalar constraint must not be given indices"
+    assert recorded["indices"] is None, "a scalar constraint must not be given indices"
 
 
-@pytest.mark.unit
+@pytest.mark.integration
 def test_a_constraint_may_be_applied_to_chosen_nodes_of_a_vector_response():
     """Throttle is constrained over the whole climb; a case file may name a subset instead.
 
     Without this the ``indices`` key would parse, be reported, and never reach the driver -- so
     the constraint would silently apply to every node.
     """
-    group = om.Group()
-    _constraint(name="climb_throttle", bounds=Bounds(upper=1.05), units=None, indices=[0, 2]).register(group)
+    registered = _registered(_constraint(name="climb_throttle", bounds=Bounds(upper=1.05), units=None, indices=[0, 2]))
 
-    # OpenMDAO wraps them in an indexer of its own, so read the array back out of it.
-    assert group._static_responses["climb_throttle"]["indices"].as_array().tolist() == [0, 2]
+    # OpenMDAO keeps them in an indexer of its own; ``as_array`` is that type's public accessor.
+    assert registered["climb_throttle"]["indices"].as_array().tolist() == [0, 2]
 
 
 # =============================================================================================
@@ -308,3 +334,27 @@ def test_the_shipped_basis_is_satisfied_by_the_baseline_aircraft(built_box, opti
     basis = CertificationBasis.from_specs(optimization_config.constraints, CATALOG)
     violated = [result.constraint.name for result in basis.evaluate(built_box) if not result.satisfied]
     assert not violated, f"The baseline B738 violates {violated}"
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_a_sizing_run_can_judge_its_own_basis_without_an_optimizer(optimization_config):
+    """Certification belongs to the study, not to the act of optimizing.
+
+    The basis used to be built by Optimizer, so asking "does the aeroplane I just sized meet its
+    certification basis?" meant constructing an optimizer that was never going to be run. It is
+    the coordinator's now, which is what makes a sizing analysis able to answer that.
+    """
+    from cdadt import SizingAnalysis
+
+    analysis = SizingAnalysis(optimization_config)
+    analysis.build()
+    analysis.converge()
+
+    basis = analysis.certification
+    assert len(basis) == len(optimization_config.constraints)
+
+    results = basis.evaluate(analysis.box)
+    assert [result.constraint.name for result in results] == [spec.name for spec in optimization_config.constraints]
+    assert all(result.satisfied for result in results), "the baseline aeroplane violates its own basis"
+    assert "constraints met" in basis.traceability_matrix(analysis.box)
