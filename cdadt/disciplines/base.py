@@ -28,6 +28,7 @@ and what keeps a discipline testable without building a model.
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections.abc import Iterator, Mapping
 from fnmatch import fnmatchcase
 from typing import Any, ClassVar
@@ -41,8 +42,8 @@ class DisciplineError(Exception):
     """Raised when a discipline is asked to hold something that is not its own."""
 
 
-class Discipline:
-    """Base class for an engineering domain's slice of the black-box interface.
+class Discipline(ABC):
+    """Abstract base for an engineering domain's slice of the black-box interface.
 
     Subclasses declare three class attributes and add nothing else unless their domain needs
     it:
@@ -68,8 +69,17 @@ class Discipline:
     False
     """
 
-    #: Short identifier for the discipline. Unique across the disciplines of one aircraft.
-    discipline_name: ClassVar[str] = "discipline"
+    @property
+    @abstractmethod
+    def discipline_name(self) -> str:
+        """Short identifier for the discipline. Unique across the disciplines of one aircraft.
+
+        Abstract because it is the one thing every domain must supply and none can inherit: it
+        is the key the discipline is reported and looked up under. Subclasses satisfy it by
+        assigning a plain class attribute -- ``discipline_name = "geometry"`` -- which is what
+        makes it readable on the class as well as on an instance, and that in turn is what lets
+        :class:`~cdadt.aircraft.Aircraft` compose discipline *classes* rather than instances.
+        """
 
     #: One line saying what the domain covers, used in generated documentation and reports.
     description: ClassVar[str] = ""
@@ -80,18 +90,36 @@ class Discipline:
     #: Quantities this discipline reads back out of the black box.
     reported: ClassVar[tuple[Response, ...]] = ()
 
-    def __init__(self) -> None:
-        """Create an empty discipline. Parameters are added one at a time by the aircraft.
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Require a subclass to name its domain, at the moment the class is written.
+
+        A subclass that does not declare ``discipline_name`` inherits ``"discipline"``. That is
+        not harmless: it is the key a discipline is reported and looked up under, so two
+        forgetful subclasses would collide, and the failure would surface far away as
+        :class:`~cdadt.aircraft.AircraftError` about duplicate names -- or not at all, if only
+        one of them existed. Checking here names the class that is actually wrong.
 
         Raises
         ------
         TypeError
-            If :class:`Discipline` itself is instantiated. The base class declares no domain,
-            owns nothing and reports nothing, so an instance of it would be an aircraft
-            component that is silently absent rather than an error.
+            If ``discipline_name`` was not declared on the subclass.
         """
-        if type(self) is Discipline:
-            raise TypeError("Discipline is a base class; instantiate one of its domain subclasses.")
+        super().__init_subclass__(**kwargs)
+        if "discipline_name" not in cls.__dict__:
+            raise TypeError(
+                f"{cls.__name__} must declare a 'discipline_name'; it is the key the discipline "
+                f"is reported and looked up under."
+            )
+
+    def __init__(self) -> None:
+        """Create an empty discipline. Parameters are added one at a time by the aircraft.
+
+        There is no guard here against instantiating :class:`Discipline` itself: ``ABCMeta``
+        already refuses it, because :attr:`discipline_name` is abstract. An earlier version
+        raised its own ``TypeError``, which became unreachable the moment the base grew a real
+        abstract member -- and an unreachable line is what this package's coverage gate exists
+        to find.
+        """
         self._parameters: dict[str, Parameter] = {}
 
     # -- ownership -----------------------------------------------------------------------

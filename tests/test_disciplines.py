@@ -23,9 +23,29 @@ from cdadt.disciplines import AIRCRAFT_DISCIPLINES
 
 @pytest.mark.unit
 def test_the_base_class_cannot_be_instantiated():
-    """It declares no domain, owns nothing and reports nothing."""
-    with pytest.raises(TypeError, match="base class"):
+    """It declares no domain, owns nothing and reports nothing.
+
+    Refused by ``ABCMeta`` rather than by a hand-written check, because ``discipline_name`` is
+    genuinely abstract: it is the one thing no domain can inherit.
+    """
+    with pytest.raises(TypeError, match="abstract"):
         Discipline()
+
+
+@pytest.mark.unit
+def test_a_domain_that_does_not_name_itself_is_refused_when_it_is_written():
+    """Not when it is used: an unnamed discipline would collide under the inherited key.
+
+    ``__init_subclass__`` runs at class-definition time, so the error names the class that is
+    actually wrong rather than surfacing later as a duplicate-name AircraftError -- or not at
+    all, if only one forgetful subclass existed.
+    """
+    with pytest.raises(TypeError, match="must declare a 'discipline_name'"):
+
+        class Nameless(Discipline):
+            """A domain that forgot the one thing it cannot inherit."""
+
+            owned_patterns = ("ac|nothing|*",)
 
 
 @pytest.mark.unit
