@@ -71,6 +71,7 @@ binds. See :doc:`optimization` and, for what is *not* established, :doc:`validat
    blackbox
    configuration
    mission
+   aerodynamics
    certification
    optimization
    artifacts

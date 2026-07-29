@@ -263,25 +263,27 @@ statement about what has actually been established:
      - Count
      - Claim
    * - ``unit``
-     - 187
+     - 226
      - One cdadt class behaves as specified, with no model built
    * - ``contract``
-     - 16
+     - 17
      - The cdadt/OpenConcept boundary and the ownership map hold. Every mandatory rule about the
-       dependency has one: not imported, not subclassed, not modified, not copied, not patched
+       dependency has one: not subclassed, not modified, not copied, not patched, and not
+       imported outside the one wrapper package -- which the physics in ``cdadt.models`` also
+       may not do
    * - ``integration``
-     - 51
+     - 54
      - A real model builds, converges and is driven -- OpenConcept's, or for two of them a
        stand-in built to check what OpenMDAO accepts and keeps
    * - ``verification``
      - 39
      - The equations are solved right: grid, solver, derivatives, reproducibility, optimality, consistency
    * - ``validation``
-     - 19
+     - 20
      - The right equations were solved: against the reference example, and against physical reality
    * - **total**
-     - **312**
-     - ~9 minutes; ``-m "not slow"`` runs 252 of them in about two
+     - **356**
+     - ~9 minutes; ``-m "not slow"`` runs 294 of them in about two
 
 Coverage
 --------

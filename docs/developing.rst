@@ -19,8 +19,8 @@ The loop
 
    conda activate cdadt_env
 
-   pytest -q -m "not slow"      # the fast loop: 252 tests, about two minutes
-   pytest -q                    # everything: 312 tests, about nine minutes
+   pytest -q -m "not slow"      # the fast loop: 294 tests, about two minutes
+   pytest -q                    # everything: 356 tests, about nine minutes
    pytest -q --cov=cdadt        # everything, with the coverage gate
    ruff check cdadt tests       # lint
    black cdadt tests            # format
@@ -41,7 +41,7 @@ What a change has to pass
    * - Gate
      - What it means
    * - ``pytest -q``
-     - All 312 pass. A test that is slow is marked ``slow``, not deleted.
+     - All 356 pass. A test that is slow is marked ``slow``, not deleted.
    * - ``pytest --cov=cdadt``
      - **100%** of statements and branches. ``fail_under = 100`` is in ``pyproject.toml``, so
        this fails the run rather than reporting a number. See :doc:`verification` for the two
@@ -94,6 +94,9 @@ Where a change belongs
    * - Add an output file
      - A method on :class:`~cdadt.artifacts.StudyArtifacts`, called from
        :meth:`~cdadt.cli.StudyCommand.archive`. See :doc:`artifacts`.
+   * - Supply your own aerodynamics
+     - Subclass :class:`~cdadt.models.loads.AerodynamicLoads` in :mod:`cdadt.models` and name it
+       in the case file. Analytic derivatives are required. See :doc:`aerodynamics`.
 
 Three of those are open/closed on purpose -- a new discipline, a new command and a new black box
 each require editing nothing that already exists -- and each has a test that adds one to prove

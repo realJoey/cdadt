@@ -15,13 +15,14 @@ cdadt inspect  cases/b738.yaml
 
 ## Three claims, all enforced by the test suite
 
-**OpenConcept is a black box.** No cdadt module imports OpenConcept at all. The sizing analysis
-is named in the case file as `module:ClassName` and loaded at run time, so there is no
-OpenConcept class cdadt can subclass, no component it can re-wire, and no physics it can quietly
-reimplement. Five contract tests hold that boundary — OpenConcept is not imported, not
-subclassed, not modified, not **copied**, and not **patched**. The last two matter because they
-are the ways of taking a dependency's behaviour that the first three would not notice: a copy has
-no import to find and leaves the clone spotless, and a patch leaves both sources untouched.
+**OpenConcept is a black box, and exactly one package may open it.** The sizing analysis is named
+in the case file as `module:ClassName` and loaded at run time. Six contract tests hold the
+boundary — OpenConcept is not subclassed, not modified, not **copied**, not **patched**, and not
+imported anywhere outside `cdadt.adapter`, the one wrapper package. The copy and patch checks
+matter because they are the ways of taking a dependency's behaviour the others would not notice: a
+copy has no import to find and leaves the clone spotless, and a patch leaves both sources
+untouched. The sixth holds the other half — `cdadt.models`, where cdadt's own physics lives,
+imports neither dependency, so a model stays testable without them.
 
 **Every discipline is a class.** Geometry, aerodynamics, propulsion, stability, structures,
 weights and performance are classes with encapsulated state. Each owns exactly one slice of the
@@ -42,6 +43,26 @@ in data — and never disagree about a number.
 a balanced-field takeoff, Part 25 reserves, a closed weight loop and a scalable engine. Every
 other example is fixed-weight, or lacks the takeoff, or lacks the reserves. That is a survey
 result, not a preference — see `docs/openconcept.rst`.
+
+## Your own aerodynamics, inside their mission
+
+The drag can be cdadt's. `cases/b738_cdadt_aero.yaml` flies the same aeroplane and the same
+mission with a vortex lattice built on its wing by [openavl](https://github.com/danielenriquez59/openavl),
+while the trajectory, balanced field, reserves, engine deck and weight closure stay OpenConcept's.
+Switching is one line of the case file.
+
+```yaml
+black_box:
+  model: cdadt.adapter.analysis:SizingMissionAnalysis
+  options:
+    aerodynamic_loads: cdadt.adapter.avl:OpenAVLLoads    # or cdadt.models.polar:PolarLoads
+```
+
+With the parabolic polar — the same equation OpenConcept evaluates — this path reproduces
+`run_738_sizing_analysis` to **4e-13**, which is what proves the machinery before new physics
+rides on it. With the lattice, which reports a span efficiency of 0.990 against the 0.82 the case
+file assumes, fuel with reserves falls 7.6% and the balanced field 5.6%. Read
+`docs/aerodynamics.rst` for what that is and is not evidence of.
 
 ## Verified: the equations are solved right
 
@@ -140,8 +161,8 @@ cdadt inspect cases/b738.yaml --what inputs       # what the box accepts
 # every run writes run_outputs/<case>_<stamp>_out/ with the report, the numbers,
 # the N2, three figures, OpenMDAO's own reports and the optimizer's log
 
-pytest -q -m "not slow"                           # the fast loop, 252 tests, ~2 min
-pytest -q                                         # 312 tests, ~9 min
+pytest -q -m "not slow"                           # the fast loop, 294 tests, ~2 min
+pytest -q                                         # 356 tests, ~9 min
 pytest -q --cov=cdadt                             # and 100% statement + branch coverage
 pytest -q -m verification                         # grid, derivatives, solver, reproducibility
 pytest -q -m validation                           # reference match + physical checks
@@ -190,6 +211,7 @@ docs/               Sphinx
 | `blackbox.rst` | Exactly what "black box" means, what goes in, what comes out, what is fixed inside |
 | `configuration.rst` | Every key of the case file |
 | `mission.rst` | The initial conditions, and why the continuation ladder is part of the interface |
+| `aerodynamics.rst` | Supplying your own aerodynamics, and the openavl vortex-lattice model |
 | `certification.rst` | Constraints, provenance, the traceability matrix, what cannot be constrained |
 | `optimization.rst` | Design variables, scaling, driver choice, and why IPOPT |
 | `artifacts.rst` | What every run writes into `run_outputs/`, and what is plotted |

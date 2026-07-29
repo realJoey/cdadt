@@ -39,6 +39,10 @@ dependencies = [
 dev = ["pytest", "pytest-cov", "black", "ruff"]
 docs = ["sphinx", "sphinx_rtd_theme", "numpydoc"]
 plot = ["matplotlib"]
+# The vortex-lattice aerodynamics. openavl is not on PyPI, so it is installed from a clone; see
+# docs/aerodynamics.rst, which also explains why its own dependencies must not be installed
+# unpinned -- they would pull numpy 2.4 over the numpy<2 this environment requires.
+avl = ["jax<0.5", "jaxlib<0.5"]
 
 [project.scripts]
 cdadt = "cdadt.cli:main"
