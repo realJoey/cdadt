@@ -263,13 +263,13 @@ statement about what has actually been established:
      - Count
      - Claim
    * - ``unit``
-     - 159
+     - 173
      - One cdadt class behaves as specified, with no model built
    * - ``contract``
      - 14
      - The cdadt/OpenConcept boundary and the ownership map hold
    * - ``integration``
-     - 41
+     - 42
      - A real OpenConcept model builds, converges and is driven
    * - ``verification``
      - 39
@@ -278,8 +278,8 @@ statement about what has actually been established:
      - 19
      - The right equations were solved: against the reference example, and against physical reality
    * - **total**
-     - **272**
-     - ~8 minutes; ``-m "not slow"`` runs 216 of them in under two
+     - **287**
+     - ~8 minutes; ``-m "not slow"`` runs 231 of them in under two
 
 Coverage
 --------
@@ -299,8 +299,28 @@ that cannot be reached is therefore either dead code or a missing test, and both
 finding.
 
 There is deliberately **no** ``exclude_lines`` list beyond coverage's default
-``# pragma: no cover``, which nothing in the package currently uses. An exclusion list is how a
-coverage number quietly stops meaning anything.
+``# pragma: no cover``. An exclusion list is how a coverage number quietly stops meaning
+anything, so the two lines that do carry that pragma are named here rather than left to be
+discovered:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 66
+
+   * - Line
+     - Why it is not reachable from a test
+   * - ``cli.py`` -- ``if __name__ == "__main__":``
+     - The script-entry guard, which by construction cannot run in an imported module.
+       ``python -m cdadt`` goes through ``__main__.py``, and *that* path is covered, by a test
+       that runs it with ``runpy``.
+   * - ``optimization.py`` -- the ``pyOptSparseDriver`` failure
+     - Reaching it needs an interpreter without pyOptSparse. This environment has it: the
+       shipped optimization case is driven by IPOPT.
+
+Both are exclusions of *environment*, not of logic -- neither hides a branch that a test could
+take here. Everything else, including the one optional-dependency failure in ``artifacts.py``, is
+exercised: matplotlib's absence is reached by making the import fail rather than by leaving the
+line out of the count.
 
 Turning branch coverage on was itself worth it: statement coverage reached 100% while four
 branches were still unexercised -- three ``--json``-less paths through the command line and the

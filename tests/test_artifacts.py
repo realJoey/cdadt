@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 
 import numpy as np
 import pytest
@@ -234,6 +235,22 @@ def test_an_odd_number_of_panels_leaves_the_spare_axes_blank(tmp_path):
     artifacts = StudyArtifacts(tmp_path)
     written = artifacts.write_trajectory(FakeBox(missing=("fltcond|CL", "fltcond|M")), title="fake", columns=3)
     assert written.stat().st_size > 0
+
+
+@pytest.mark.unit
+def test_plotting_without_matplotlib_names_the_extra_that_provides_it(tmp_path, monkeypatch):
+    """The one optional dependency, and the only place its absence is allowed to be felt.
+
+    matplotlib is installed here -- the tests above plot with it -- so the branch is reached by
+    making the import fail rather than by uninstalling it: a ``None`` in ``sys.modules`` is what
+    the import system treats as an unimportable module. What is under test is cdadt's message,
+    which has to name the extra, since a bare ImportError from inside a plotting call does not
+    tell a user which of the install options they skipped.
+    """
+    monkeypatch.setitem(sys.modules, "matplotlib", None)
+
+    with pytest.raises(ArtifactError, match=r'pip install -e "\.\[plot\]"'):
+        StudyArtifacts(tmp_path).write_trajectory(FakeBox(), title="fake")
 
 
 # =============================================================================================

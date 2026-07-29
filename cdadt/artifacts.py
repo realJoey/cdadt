@@ -361,7 +361,7 @@ class StudyArtifacts:
         """
         try:
             import matplotlib
-        except ImportError as error:  # pragma: no cover - depends on the installed stack
+        except ImportError as error:
             raise ArtifactError(
                 "Plotting the trajectory needs matplotlib, which is an optional dependency. "
                 'Install it with: pip install -e ".[plot]"'

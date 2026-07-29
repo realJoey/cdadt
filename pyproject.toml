@@ -94,8 +94,10 @@ branch = true
 # The package is at 100% statement and branch coverage, and stays there. Every line of cdadt is
 # reachable from a test: there is no physics here to be hard to exercise, only interface,
 # validation and reporting, so anything unreachable is either dead or a missing test.
-# Deliberately no `exclude_lines` beyond coverage's default `# pragma: no cover`, which nothing
-# currently uses -- an exclusion list is how a coverage number stops meaning anything.
+# Deliberately no `exclude_lines` beyond coverage's default `# pragma: no cover`, which two lines
+# carry: the `__main__` guard in cli.py, and the pyOptSparse failure in optimization.py that needs
+# an interpreter without pyOptSparse. Both are exclusions of environment rather than of logic.
+# See docs/verification.rst. An exclusion list is how a coverage number stops meaning anything.
 fail_under = 100
 show_missing = true
 skip_covered = true

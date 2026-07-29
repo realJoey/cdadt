@@ -51,7 +51,7 @@ result, not a preference — see `docs/openconcept.rst`.
 | **Reproducibility** | Three different continuation ladders reach the same aircraft to **1e-7**; reruns are bit-identical |
 | **Environment** | Rebuilt from scratch out of `environment.yml`; the suite passes and every number reproduces |
 | **Optimality** | No feasible ±2% perturbation of any design variable improves the objective |
-| **Coverage** | **100%** of statements and branches, enforced, no exclusion list |
+| **Coverage** | **100%** of statements and branches, enforced; no exclusion list, and the two `# pragma: no cover` lines are named in `docs/verification.rst` |
 
 Details and the full tables in `docs/verification.rst`.
 
@@ -137,8 +137,8 @@ cdadt inspect cases/b738.yaml --what inputs       # what the box accepts
 
 cdadt size cases/b738.yaml --outputs b738_out     # + n2.html, trajectory.pdf, report.txt, results.json
 
-pytest -q -m "not slow"                           # the fast loop, 216 tests, ~2 min
-pytest -q                                         # 272 tests, ~8 min
+pytest -q -m "not slow"                           # the fast loop, 231 tests, ~2 min
+pytest -q                                         # 287 tests, ~8 min
 pytest -q --cov=cdadt                             # and 100% statement + branch coverage
 pytest -q -m verification                         # grid, derivatives, solver, reproducibility
 pytest -q -m validation                           # reference match + physical checks
