@@ -46,17 +46,18 @@ class AerodynamicLoadsComp(om.ExplicitComponent):
         Called with ``(span_efficiency, zero_lift_drag)`` and returning an
         :class:`~cdadt.models.loads.AerodynamicLoads`. A factory rather than an instance because
         the two arguments are black-box variables that move under the optimizer.
-    publish_coefficients : bool
-        Also publish ``CD`` and the moment coefficients as outputs. Default ``False``; the
-        mission needs only ``drag``, and an unconnected output on every phase is noise in an N2
-        diagram. Turned on where the coefficients are wanted for reporting.
+
+    Notes
+    -----
+    Only ``drag`` is published. The model computes all six coefficients, but the mission consumes
+    the force alone, and an output nothing connects to is noise in an N2 diagram of 826 of them.
+    The rest are reachable through the model itself when a study wants them.
     """
 
     def initialize(self) -> None:
         """Declare the options that make this component specific to a phase and a model."""
         self.options.declare("num_nodes", default=1, types=int)
         self.options.declare("loads_factory", types=object)
-        self.options.declare("publish_coefficients", default=False, types=bool)
 
     def setup(self) -> None:
         """Declare the flight conditions and geometry read, and the drag published."""
@@ -75,17 +76,12 @@ class AerodynamicLoadsComp(om.ExplicitComponent):
         self.add_input("CD0", shape=(nodes,))
 
         self.add_output("drag", shape=(nodes,), units="N")
-        if self.options["publish_coefficients"]:
-            self.add_output("CD", shape=(nodes,))
 
         # Drag at a node depends on that node's flight condition, and on every scalar.
         self.declare_partials("drag", ["fltcond|CL", "fltcond|q", "CD0"], rows=rows, cols=rows)
         self.declare_partials(
             "drag", ["ac|geom|wing|S_ref", "ac|geom|wing|AR", "ac|aero|polar|e"], rows=rows, cols=np.zeros(nodes)
         )
-        if self.options["publish_coefficients"]:
-            self.declare_partials("CD", ["fltcond|CL", "CD0"], rows=rows, cols=rows)
-            self.declare_partials("CD", ["ac|geom|wing|AR", "ac|aero|polar|e"], rows=rows, cols=np.zeros(nodes))
 
     # -- evaluation ----------------------------------------------------------------------
 
@@ -120,8 +116,6 @@ class AerodynamicLoadsComp(om.ExplicitComponent):
         coefficients: AeroCoefficients = model.coefficients(condition, planform)
 
         outputs["drag"] = coefficients.CD * condition.dynamic_pressure * planform.area
-        if self.options["publish_coefficients"]:
-            outputs["CD"] = coefficients.CD
 
     def compute_partials(self, inputs: Any, partials: Any) -> None:
         """Publish analytic derivatives, taken from the model rather than differenced.
@@ -143,9 +137,3 @@ class AerodynamicLoadsComp(om.ExplicitComponent):
         partials["drag", "ac|geom|wing|AR"] = gradients["AR"] * pressure * area
         partials["drag", "fltcond|q"] = coefficients.CD * area
         partials["drag", "ac|geom|wing|S_ref"] = coefficients.CD * pressure
-
-        if self.options["publish_coefficients"]:
-            partials["CD", "fltcond|CL"] = gradients["CL"]
-            partials["CD", "CD0"] = gradients["CD0"]
-            partials["CD", "ac|aero|polar|e"] = gradients["e"]
-            partials["CD", "ac|geom|wing|AR"] = gradients["AR"]

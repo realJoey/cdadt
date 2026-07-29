@@ -75,13 +75,20 @@ class TrapezoidalPlanform(Planform):
         Quarter-chord sweep, **degrees**. Default 0. Degrees because that is the unit the case
         file and 14 CFR both use; it is converted once, here.
     taper : float, optional
-        Tip chord over root chord. Default 1, an untapered wing.
+        Tip chord over root chord. Default 1, an untapered wing. Values above 1 describe an
+        inverse-taper wing, which is unusual but perfectly buildable, so they are allowed.
 
     Raises
     ------
     ValueError
-        If the area or aspect ratio is not positive, or the taper is outside ``(0, 1]``. A taper
-        of zero is a wing with no tip chord, which no lattice can be built on.
+        If the area, aspect ratio or taper is not positive. Zero taper is a wing with no tip
+        chord, which no lattice can be built on.
+
+        Note what is *not* rejected: a taper above 1. An earlier version capped it there, on the
+        reasoning that a tapered wing narrows outboard. That made the class non-differentiable at
+        exactly the bound an optimizer is most likely to sit on -- a finite difference at
+        ``taper = 1`` steps to 1.000001 and threw. A constraint that breaks the derivative at its
+        own boundary belongs in a case file's ``optimize`` band, not in a geometry class.
 
     Examples
     --------
@@ -99,8 +106,11 @@ class TrapezoidalPlanform(Planform):
             raise ValueError(f"A wing needs a positive reference area; got {area!r}.")
         if aspect_ratio <= 0.0:
             raise ValueError(f"A wing needs a positive aspect ratio; got {aspect_ratio!r}.")
-        if not 0.0 < taper <= 1.0:
-            raise ValueError(f"Taper ratio is the tip chord over the root chord, in (0, 1]; got {taper!r}.")
+        if taper <= 0.0:
+            raise ValueError(
+                f"Taper ratio is the tip chord over the root chord and must be positive; got {taper!r}. "
+                f"Zero leaves no tip chord to build a section on."
+            )
         self._area = float(area)
         self._aspect_ratio = float(aspect_ratio)
         self._sweep_deg = float(sweep)

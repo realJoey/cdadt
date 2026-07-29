@@ -103,6 +103,15 @@ class CdadtAircraftModel(om.Group):
         )
         self.connect("zero_lift_drag.CD0", "aero_loads.CD0")
 
+        # The loads component and OpenConcept's engine deck both read the altitude and the Mach
+        # number, and they declare them with different units and defaults. OpenMDAO refuses that
+        # ambiguity rather than picking one, which is right -- so the aircraft model states the
+        # shared declaration once, here, as OpenMDAO's own error message prescribes. Inside a
+        # mission the phase connects a real source and these defaults are never used; standalone,
+        # they are what makes the group buildable at all.
+        self.set_input_defaults("fltcond|h", val=np.zeros(nodes), units="m")
+        self.set_input_defaults("fltcond|M", val=np.zeros(nodes))
+
     # -- propulsion and weight: OpenConcept's, unmodified --------------------------------
 
     def _add_propulsion(self, nodes: int) -> None:

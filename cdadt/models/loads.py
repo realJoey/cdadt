@@ -124,14 +124,6 @@ class Planform(ABC):
     implementation's business to turn them into whatever it solves on.
     """
 
-    #: The case-file variables every planform is built from.
-    VARIABLES: ClassVar[tuple[str, ...]] = (
-        "ac|geom|wing|S_ref",
-        "ac|geom|wing|AR",
-        "ac|geom|wing|c4sweep",
-        "ac|geom|wing|taper",
-    )
-
     @property
     @abstractmethod
     def area(self) -> float:
@@ -146,22 +138,18 @@ class Planform(ABC):
 class AerodynamicLoads(ABC):
     """A model that produces aerodynamic loads for a flight condition and a planform.
 
-    Subclasses implement :meth:`coefficients` and declare :attr:`requires`. Everything else --
-    installing the model in an OpenMDAO group, vectorising it over a mission, handing its drag to
-    the trajectory -- belongs to :mod:`cdadt.adapter` and is not a model's concern.
+    Subclasses implement :meth:`build` and :meth:`coefficients`. Everything else -- installing
+    the model in an OpenMDAO group, vectorising it over a mission, handing its drag to the
+    trajectory -- belongs to :mod:`cdadt.adapter` and is not a model's concern.
 
     Attributes
     ----------
     model_name : str
         Short identifier, used in reports and in the run record. Abstract in the same sense as a
         discipline's name: it is the one thing no model can inherit.
-    requires : tuple of str
-        Black-box variables this model reads. Declared so that a case file naming a model can be
-        checked against the box *before* a long run starts, rather than failing inside setup.
     """
 
     model_name: ClassVar[str]
-    requires: ClassVar[tuple[str, ...]] = ()
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Require a subclass to name itself, at the moment the class is written.

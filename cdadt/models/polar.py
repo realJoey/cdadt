@@ -58,8 +58,6 @@ class PolarLoads(AerodynamicLoads):
 
     model_name: ClassVar[str] = "parabolic_polar"
 
-    requires: ClassVar[tuple[str, ...]] = ("ac|aero|polar|e", "ac|geom|wing|S_ref", "ac|geom|wing|AR")
-
     __slots__ = ("_span_efficiency", "_zero_lift_drag")
 
     def __init__(self, span_efficiency: float, zero_lift_drag: object = 0.0) -> None:

@@ -33,6 +33,7 @@ have to assume.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from functools import lru_cache
 from typing import ClassVar
 
@@ -42,7 +43,7 @@ from cdadt.models.coefficients import AeroCoefficients
 from cdadt.models.loads import AerodynamicLoads, FlightCondition, LoadsError, Planform
 from cdadt.models.planform import TrapezoidalPlanform
 
-__all__ = ["OpenAVLLoads", "openavl_is_available"]
+__all__ = ["OpenAVLLoads", "openavl_is_available", "quadratic_polar"]
 
 
 def openavl_is_available() -> bool:
@@ -91,6 +92,36 @@ def _lattice(
     return aircraft
 
 
+def quadratic_polar(
+    lift_coefficients: Sequence[float],
+    drag_coefficients: Sequence[float],
+    describes: str = "this wing",
+) -> tuple[float, float, float]:
+    """Fit ``CD = cd_min + k (CL - cl_at_min_drag)^2`` and return those three numbers.
+
+    Separated from the lattice solve so that the fit can be tested on its own, including the
+    degenerate cases -- a lattice that returns drag falling with lift is a geometry the solver
+    could not resolve, and that must be an error rather than a negative curvature propagating
+    into an optimizer as an incentive to add lift.
+
+    Raises
+    ------
+    LoadsError
+        If the fitted curvature is not positive. Induced drag grows with lift; anything else is
+        not a drag polar.
+    """
+    a, b, c = np.polyfit(np.asarray(lift_coefficients, dtype=float), np.asarray(drag_coefficients, dtype=float), 2)
+    if a <= 0.0:
+        raise LoadsError(
+            f"The lattice produced a drag polar with non-positive curvature ({a:.3e}) for "
+            f"{describes}. Induced drag must grow with lift, so this is a geometry the lattice "
+            f"could not resolve rather than a result."
+        )
+    cl_at_min_drag = -b / (2.0 * a)
+    cd_min = c - a * cl_at_min_drag**2
+    return float(cd_min), float(a), float(cl_at_min_drag)
+
+
 @lru_cache(maxsize=32)
 def _fit_polar(
     area: float,
@@ -131,17 +162,7 @@ def _fit_polar(
         # SPANEF agrees. AVL's own documentation prefers the far-field drag for the same reason.
         drags.append(float(results["CDFF"]))
 
-    # A quadratic through three points, in the form CD = a CL^2 + b CL + c.
-    a, b, c = np.polyfit(np.asarray(samples), np.asarray(drags), 2)
-    if a <= 0.0:
-        raise LoadsError(
-            f"The lattice produced a drag polar with non-positive curvature ({a:.3e}) for a wing "
-            f"of area {area:.4g} m2 and aspect ratio {aspect_ratio:.4g}. Induced drag must grow "
-            f"with lift, so this is a geometry the lattice could not resolve rather than a result."
-        )
-    cl_at_min_drag = -b / (2.0 * a)
-    cd_min = c - a * cl_at_min_drag**2
-    return float(cd_min), float(a), float(cl_at_min_drag)
+    return quadratic_polar(samples, drags, describes=f"a wing of area {area:.4g} m2, AR {aspect_ratio:.4g}")
 
 
 @lru_cache(maxsize=32)
@@ -201,13 +222,6 @@ class OpenAVLLoads(AerodynamicLoads):
     """
 
     model_name: ClassVar[str] = "openavl_vortex_lattice"
-
-    requires: ClassVar[tuple[str, ...]] = (
-        "ac|geom|wing|S_ref",
-        "ac|geom|wing|AR",
-        "ac|geom|wing|c4sweep",
-        "ac|geom|wing|taper",
-    )
 
     __slots__ = ("_mach", "_planform", "_resolution", "_zero_lift_drag")
 
@@ -293,17 +307,36 @@ class OpenAVLLoads(AerodynamicLoads):
         return AeroCoefficients(CL=lift, CD=drag)
 
     def drag_gradients(self, condition: FlightCondition, planform: Planform) -> dict[str, np.ndarray]:
-        """Return the analytic derivatives of ``CD``.
+        """Return the derivatives of ``CD``.
 
-        The polar's coefficients are held fixed here: they are a property of the geometry, and
-        the geometry derivative goes through the lattice, which is a separate path. What this
-        returns is what the mission's Newton solve needs, where lift moves and the wing does not.
+        ``CL`` and ``CD0`` are exact: the fitted polar is a quadratic, and its lift derivative is
+        the derivative of that quadratic.
+
+        ``e`` is **zero, and that is correct** -- not missing. This model does not read
+        ``ac|aero|polar|e``; it computes the span efficiency from the lattice. A case file's stated
+        value has no influence on this drag, so the derivative with respect to it genuinely is
+        nothing. Compare :meth:`~cdadt.models.polar.PolarLoads.drag_gradients`, where it is the
+        dominant term.
+
+        ``AR`` is an **approximation, and its size is measured**. Writing the fitted curvature as
+        :math:`k = 1/(\\pi e A\\!R)` gives :math:`\\partial C_D/\\partial A\\!R = -k(C_L-C_{L_0})^2/A\\!R`
+        with the lattice's span efficiency held fixed. The exact derivative carries a second term
+        in :math:`\\partial e/\\partial A\\!R`, which for the shipped planform is
+        :math:`-1.85\\times10^{-3}` -- 1.8% of the term retained here. So this captures 98% of the
+        geometry sensitivity, and ``test_the_neglected_span_efficiency_gradient_stays_small``
+        measures that rather than trusting it.
+
+        Making it exact means chaining openavl's ``jacrev`` over ``GeometryDesignParams`` with the
+        analytic section derivatives of :class:`~cdadt.models.planform.TrapezoidalPlanform`, and
+        letting the reference area move with the wing -- which ``snapshot_refs`` currently holds
+        fixed. That is the next piece of work, not a line of it.
         """
         _, curvature, cl_at_min_drag = self._polar()
         lift = condition.CL
+        excess = lift - cl_at_min_drag
         return {
-            "CL": 2.0 * curvature * (lift - cl_at_min_drag),
+            "CL": 2.0 * curvature * excess,
             "CD0": np.ones_like(lift),
             "e": np.zeros_like(lift),
-            "AR": np.zeros_like(lift),
+            "AR": -curvature * excess**2 / planform.aspect_ratio,
         }

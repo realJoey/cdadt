@@ -4,9 +4,8 @@ A loads model produces forces and moments in coefficient form. Six numbers descr
 completely in the aircraft's own axes, and every one is something a vortex-lattice method
 computes whether or not the caller asked: there is no saving in returning fewer.
 
-The mission cdadt drives consumes only :attr:`~AeroCoefficients.DRAG` today, because
-OpenConcept's trajectory solves vertical equilibrium itself and asks the aircraft model for drag
-alone. The other five are carried anyway. Trim, static margin, control authority and the
+The mission cdadt drives consumes only the drag today, because OpenConcept's trajectory solves
+vertical equilibrium itself and asks the aircraft model for drag alone. The other five are carried anyway. Trim, static margin, control authority and the
 handling-qualities side of a certification basis are all written in terms of the moment
 coefficients, and a loads interface that discarded them would have to be widened later by
 changing every implementation.
@@ -57,9 +56,6 @@ class AeroCoefficients:
 
     #: The components, in the order they are reported.
     NAMES: ClassVar[tuple[str, ...]] = ("CL", "CD", "CY", "Cl", "Cm", "Cn")
-
-    #: The one component OpenConcept's mission consumes.
-    DRAG: ClassVar[str] = "CD"
 
     __slots__ = ("_values",)
 
