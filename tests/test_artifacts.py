@@ -15,7 +15,7 @@ import sys
 import numpy as np
 import pytest
 
-from cdadt import ArtifactError, MissionTrajectory, StudyArtifacts, Trace
+from cdadt import ArtifactError, MissionTrajectory, StudyArtifacts, TakeoffTrajectory, Trace
 
 #: The phases and the traces a fake box publishes, in flight order.
 PHASES = ("climb", "cruise", "descent")
@@ -41,9 +41,24 @@ class FakeBox:
         takeoff phases do. Default: one, named so that name order would place it first.
     built : bool, optional
         What :attr:`is_built` reports. Default ``True``.
+    takeoff : bool, optional
+        Also publish OpenConcept's four ground-roll phases with the traces
+        :class:`~cdadt.artifacts.TakeoffTrajectory` plots. Default ``False``, so that the
+        mission tests keep a box with no takeoff in it.
+    takeoff_missing : sequence of str, optional
+        Takeoff trace names to withhold, so a mission model that publishes fewer of them can be
+        tested. The real box publishes all four.
     """
 
-    def __init__(self, phases=PHASES, missing=(), ground_roll=("aaa_v1v0",), built=True):
+    def __init__(
+        self,
+        phases=PHASES,
+        missing=(),
+        ground_roll=("aaa_v1v0",),
+        built=True,
+        takeoff=False,
+        takeoff_missing=(),
+    ):
         self.is_built = bool(built)
         self.problem = object()
         self._values = {}
@@ -58,6 +73,13 @@ class FakeBox:
         for phase in ground_roll:
             for trace in traces:
                 self._values[f"mission.{phase}.{trace.name}"] = np.zeros(5)
+        if takeoff:
+            for index, phase in enumerate(dict.fromkeys((*TakeoffTrajectory.CONTINUE, *TakeoffTrajectory.ABORT))):
+                for trace in (TakeoffTrajectory.ABSCISSA, *TakeoffTrajectory.TRACES):
+                    if trace.name in takeoff_missing:
+                        continue
+                    self._values[f"mission.{phase}.{trace.name}"] = np.linspace(index, index + 1, 5)
+            self._values[f"mission.{TakeoffTrajectory.V1_PATH}"] = np.array([135.0])
         self._values["ac|weights|MTOW"] = np.array([78345.0])
 
     def readable(self):
@@ -356,3 +378,104 @@ def test_the_real_trajectory_is_monotonic_in_range_and_plots(tmp_path, converged
     artifacts = StudyArtifacts(tmp_path)
     assert artifacts.write_trajectory(box, title="b738").stat().st_size > 0
     assert artifacts.write_n2(box).stat().st_size > 0
+
+
+# =============================================================================================
+# The takeoff
+# =============================================================================================
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_the_two_takeoff_paths_end_at_the_same_distance(converged_analysis):
+    """That is what "balanced" means, and it is the figure's whole reason for existing.
+
+    Neither reference example plots the ground roll, so this is not a comparison against one --
+    it is a check that the two paths the figure draws really are the balanced pair, ending
+    together at the field length cdadt reports.
+    """
+    box = converged_analysis.box
+    mission = converged_analysis.config.mission_path
+    takeoff = TakeoffTrajectory(box, mission_path=mission)
+
+    speed = TakeoffTrajectory.TRACES[0]
+    continue_distance, continue_speed = takeoff.path(takeoff.CONTINUE, speed)
+    abort_distance, abort_speed = takeoff.path(takeoff.ABORT, speed)
+
+    field = float(np.asarray(box.get(f"{mission}.bfl.distance_continue", units="ft")).reshape(-1)[0])
+    assert continue_distance[-1] == pytest.approx(field, rel=1e-6)
+    assert abort_distance[-1] == pytest.approx(field, rel=1e-6), "the field is not balanced"
+
+    # And the two paths are the same run until V1, because up to there nothing has been decided.
+    assert continue_speed[0] == pytest.approx(abort_speed[0])
+    assert continue_speed[-1] > takeoff.decision_speed, "a continued takeoff accelerates past V1"
+    # Braking to rest is asymptotic and the phase ends at the balanced distance, not at zero
+    # speed, so this is stated against V1 rather than against an invented threshold: on the
+    # shipped case the abort ends at about 3.9 kn, under 3% of a 135 kn decision speed.
+    assert abort_speed[-1] < 0.05 * takeoff.decision_speed, "a rejected takeoff does not end nearly stopped"
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_the_takeoff_reads_v1_and_publishes_every_trace_it_plots(converged_analysis):
+    """V1 is solved, not set: it must be far from its seed and every panel must have data."""
+    takeoff = TakeoffTrajectory(converged_analysis.box, mission_path=converged_analysis.config.mission_path)
+
+    assert takeoff.available == TakeoffTrajectory.TRACES
+    assert 100.0 < takeoff.decision_speed < 200.0
+    assert repr(takeoff).startswith("TakeoffTrajectory(continue=['v0v1', 'v1vr', 'rotate']")
+
+
+@pytest.mark.unit
+def test_a_box_with_no_ground_roll_says_so_rather_than_plotting_half_a_takeoff():
+    """A mission model without a balanced field has no takeoff figure, and must say which."""
+    with pytest.raises(ArtifactError, match=r"no ground roll for \['v0v1'"):
+        TakeoffTrajectory(FakeBox())
+
+
+@pytest.mark.integration
+@pytest.mark.slow
+def test_all_three_figures_are_written_from_the_real_box(tmp_path, converged_analysis):
+    """Both examples' figures plus the takeoff, each non-empty."""
+    artifacts = StudyArtifacts(tmp_path)
+    box = converged_analysis.box
+    mission = converged_analysis.config.mission_path
+
+    for written in (
+        artifacts.write_mission_profile(box, title="b738", mission_path=mission),
+        artifacts.write_trajectory(box, title="b738", mission_path=mission),
+        artifacts.write_takeoff(box, title="b738", mission_path=mission),
+    ):
+        assert written.stat().st_size > 0, written
+
+
+@pytest.mark.unit
+def test_the_profile_figure_reproduces_the_panels_b738_sizing_draws():
+    """Six panels in B738_sizing.py's order, with drag and thrust sharing the fifth."""
+    labels = [label for label, _ in StudyArtifacts.PROFILE_PANELS]
+    assert labels == [
+        "Altitude (ft)",
+        "Mach number",
+        "Vertical speed (ft/min)",
+        "Weight (lb)",
+        "Longitudinal force (lb)",
+        "Throttle (%)",
+    ]
+    force = dict(StudyArtifacts.PROFILE_PANELS)["Longitudinal force (lb)"]
+    assert [trace.name for trace in force] == ["drag", "thrust"], "the force panel carries two series"
+
+
+@pytest.mark.unit
+def test_a_takeoff_panel_with_nothing_to_draw_is_switched_off(tmp_path):
+    """Four traces fill a 2x2 exactly, so the spare-axis path is only reachable with fewer.
+
+    The real box publishes all four. A mission model that publishes three would otherwise get an
+    empty gridded square in the corner, which reads as a panel whose data went missing rather
+    than as a panel that was never asked for.
+    """
+    box = FakeBox(takeoff=True, takeoff_missing=("weight",))
+    takeoff = TakeoffTrajectory(box)
+    assert len(takeoff.available) == len(TakeoffTrajectory.TRACES) - 1
+
+    written = StudyArtifacts(tmp_path).write_takeoff(box, title="fake")
+    assert written.stat().st_size > 0

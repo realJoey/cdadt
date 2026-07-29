@@ -33,7 +33,7 @@ from typing import Any, ClassVar
 
 import numpy as np
 
-__all__ = ["ArtifactError", "MissionTrajectory", "StudyArtifacts", "Trace"]
+__all__ = ["ArtifactError", "MissionTrajectory", "StudyArtifacts", "TakeoffTrajectory", "Trace"]
 
 
 class ArtifactError(Exception):
@@ -242,6 +242,107 @@ class MissionTrajectory:
         return f"MissionTrajectory({len(self._phases)} phases, {len(self.available)} traces)"
 
 
+class TakeoffTrajectory:
+    """The balanced field: what the aeroplane does before the mission starts.
+
+    Neither reference example plots this -- ``B738.py`` and ``B738_sizing.py`` both list the same
+    seven steady phases -- but the takeoff is where the field length comes from, and a balanced
+    field is a statement about two paths that a table of numbers cannot show.
+
+    **Two paths, not one.** From brake release the aeroplane accelerates to V\\ :sub:`1`
+    (``v0v1``). At V\\ :sub:`1` it either continues, accelerating to rotation and lifting off
+    (``v1vr`` then ``rotate``), or it rejects and brakes to a stop (``v1v0``). Balanced means the
+    two end at the same distance. Drawn together against ground distance, that is the picture;
+    concatenated into one line, as the mission phases are, it would be a trajectory that doubles
+    back on itself, which is exactly why :class:`MissionTrajectory` leaves these out.
+
+    **Why these four are named rather than discovered.** The mission phases are discovered
+    because nothing distinguishes them but their structure. These four are different: which one
+    is the continued takeoff and which is the rejected one is *semantics*, and no output the box
+    publishes carries it. The names are OpenConcept's own, from the takeoff group that
+    ``B738_sizing.py`` builds, and a box that does not have them raises rather than guessing.
+
+    Parameters
+    ----------
+    box : OpenConceptSizingBox
+        A converged box.
+    mission_path : str, optional
+        Name of the mission subsystem. Default ``"mission"``.
+
+    Raises
+    ------
+    ArtifactError
+        If the box does not publish the ground-roll phases, naming the ones it is missing.
+    """
+
+    #: Accelerate to V1, then continue: rotate and lift off.
+    CONTINUE: ClassVar[tuple[str, ...]] = ("v0v1", "v1vr", "rotate")
+
+    #: Accelerate to V1, then reject and brake to a stop.
+    ABORT: ClassVar[tuple[str, ...]] = ("v0v1", "v1v0")
+
+    ABSCISSA: ClassVar[Trace] = Trace("range", "ft", "Ground distance (ft)")
+
+    TRACES: ClassVar[tuple[Trace, ...]] = (
+        Trace("fltcond|Utrue", "kn", "True airspeed (knots)"),
+        Trace("fltcond|h", "ft", "Altitude (ft)"),
+        Trace("throttle", None, "Throttle setting"),
+        Trace("weight", "lb", "Weight (lb)"),
+    )
+
+    #: Where the decision speed lives, relative to the mission.
+    V1_PATH: ClassVar[str] = "takeoff|v1"
+
+    def __init__(self, box: Any, mission_path: str = "mission") -> None:
+        self._box = box
+        self._mission_path = str(mission_path)
+        missing = [
+            phase
+            for phase in dict.fromkeys((*self.CONTINUE, *self.ABORT))
+            if not box.has(f"{self._mission_path}.{phase}.{self.ABSCISSA.name}")
+        ]
+        if missing:
+            raise ArtifactError(
+                f"The black box publishes no ground roll for {missing} under "
+                f"'{self._mission_path}', so there is no takeoff to plot. These are "
+                f"OpenConcept's own takeoff phase names; a mission model without a balanced "
+                f"field has no takeoff figure."
+            )
+
+    @property
+    def decision_speed(self) -> float:
+        """V\\ :sub:`1`, in knots: where the two paths separate."""
+        return float(np.asarray(self._box.get(f"{self._mission_path}.{self.V1_PATH}", units="kn")).reshape(-1)[0])
+
+    def path(self, phases: Sequence[str], trace: Trace) -> tuple[np.ndarray, np.ndarray]:
+        """Return ``(distance, values)`` along one of the two paths, concatenated in order."""
+        distance, values = [], []
+        for phase in phases:
+            distance.append(self._read(phase, self.ABSCISSA))
+            values.append(self._read(phase, trace))
+        return np.concatenate(distance), np.concatenate(values)
+
+    def _read(self, phase: str, trace: Trace) -> np.ndarray:
+        """Return one trace from one phase, as a one-dimensional array."""
+        path = f"{self._mission_path}.{phase}.{trace.name}"
+        return np.atleast_1d(np.asarray(self._box.get(path, units=trace.units), dtype=float)).ravel()
+
+    @property
+    def available(self) -> tuple[Trace, ...]:
+        """The traces every ground-roll phase publishes."""
+        return tuple(
+            trace
+            for trace in self.TRACES
+            if all(
+                self._box.has(f"{self._mission_path}.{phase}.{trace.name}") for phase in (*self.CONTINUE, *self.ABORT)
+            )
+        )
+
+    def __repr__(self) -> str:
+        """Return a representation naming the two paths."""
+        return f"TakeoffTrajectory(continue={list(self.CONTINUE)}, abort={list(self.ABORT)})"
+
+
 class StudyArtifacts:
     """The directory a study writes its files into, and the files it writes.
 
@@ -341,6 +442,111 @@ class StudyArtifacts:
             axis.axis("off")
 
         figure.suptitle(title)
+        figure.tight_layout()
+        destination = self._directory / name
+        figure.savefig(destination)
+        plt.close(figure)
+        return destination
+
+    #: The panels ``B738_sizing.py``'s own ``plot_results`` draws, in its order and its units.
+    #: The fifth carries two series on one axis, which is why a panel is a tuple of traces.
+    PROFILE_PANELS: ClassVar[tuple[tuple[str, tuple[Trace, ...]], ...]] = (
+        ("Altitude (ft)", (Trace("fltcond|h", "ft", "Altitude"),)),
+        ("Mach number", (Trace("fltcond|M", None, "Mach"),)),
+        ("Vertical speed (ft/min)", (Trace("fltcond|vs", "ft/min", "Vertical speed"),)),
+        ("Weight (lb)", (Trace("weight", "lb", "Weight"),)),
+        (
+            "Longitudinal force (lb)",
+            (Trace("drag", "lbf", "Drag"), Trace("thrust", "lbf", "Thrust")),
+        ),
+        ("Throttle (%)", (Trace("throttle", None, "Throttle"),)),
+    )
+
+    def write_mission_profile(
+        self,
+        box: Any,
+        title: str,
+        mission_path: str = "mission",
+        name: str = "mission.pdf",
+    ) -> Path:
+        """Reproduce ``B738_sizing.py``'s ``plot_results``: the 2x3 mission profile.
+
+        This is the figure belonging to the example cdadt actually drives, as distinct from
+        :meth:`write_trajectory`, which reproduces the seven-panel figure ``B738.py`` draws in
+        ``show_outputs``. They plot different quantities, so cdadt writes both rather than
+        choosing which example to be faithful to.
+
+        Throttle is drawn as a percentage and the force panel carries drag and thrust together,
+        both as ``plot_results`` does it.
+
+        Raises
+        ------
+        ArtifactError
+            If matplotlib is not installed, or if the box publishes no trajectory.
+        """
+        trajectory = MissionTrajectory(box, mission_path=mission_path)
+        plt = self._pyplot()
+
+        figure, axes = plt.subplots(2, 3, figsize=(11.0, 6.0), squeeze=False)
+        flat = [axis for row in axes for axis in row]
+
+        for axis, (label, traces) in zip(flat, self.PROFILE_PANELS, strict=True):
+            for trace in traces:
+                values = trajectory.read(trace)
+                axis.plot(trajectory.read(trajectory.ABSCISSA), values * 100.0 if "%" in label else values, "-")
+            axis.set_xlabel("Distance flown (nmi)")
+            axis.set_ylabel(label)
+            axis.grid(True, alpha=0.3)
+            if len(traces) > 1:
+                axis.legend([trace.label for trace in traces])
+
+        figure.suptitle(title)
+        figure.tight_layout()
+        destination = self._directory / name
+        figure.savefig(destination)
+        plt.close(figure)
+        return destination
+
+    def write_takeoff(
+        self,
+        box: Any,
+        title: str,
+        mission_path: str = "mission",
+        name: str = "takeoff.pdf",
+    ) -> Path:
+        """Plot the balanced field: the continued takeoff and the rejected one, against distance.
+
+        Neither reference example draws this. It is here because the field length is what the
+        takeoff phases are *for*, and "balanced" is a claim about two paths ending at the same
+        distance -- which a number in a table states but does not show.
+
+        Raises
+        ------
+        ArtifactError
+            If matplotlib is not installed, or if the box has no ground roll.
+        """
+        takeoff = TakeoffTrajectory(box, mission_path=mission_path)
+        plt = self._pyplot()
+
+        traces = takeoff.available
+        figure, axes = plt.subplots(2, 2, figsize=(11.0, 6.0), squeeze=False)
+        flat = [axis for row in axes for axis in row]
+
+        for axis, trace in zip(flat, traces, strict=False):
+            for phases, style, label in (
+                (takeoff.CONTINUE, "-", "Continue"),
+                (takeoff.ABORT, "--", "Reject"),
+            ):
+                distance, values = takeoff.path(phases, trace)
+                axis.plot(distance, values, style, label=label)
+            axis.set_xlabel(takeoff.ABSCISSA.label)
+            axis.set_ylabel(trace.label)
+            axis.grid(True, alpha=0.3)
+            axis.legend()
+        for axis in flat[len(traces) :]:
+            axis.axis("off")
+
+        figure.suptitle(f"{title} -- balanced field, V1 = {takeoff.decision_speed:.1f} kn")
         figure.tight_layout()
         destination = self._directory / name
         figure.savefig(destination)
