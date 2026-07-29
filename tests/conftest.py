@@ -8,7 +8,8 @@ once per session and comparing many times.
 from __future__ import annotations
 
 import copy
-from collections.abc import Callable
+import os
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,33 @@ ROOT = Path(__file__).resolve().parent.parent
 
 #: Directory holding the shipped case files.
 CASES = ROOT / "cases"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def isolated_working_directory(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
+    """Run the whole suite from a temporary directory, so it cannot write into the repository.
+
+    Not hygiene for its own sake. A driver writes its own log -- pyOptSparse puts ``IPOPT.out``
+    into the problem's output directory -- and OpenMDAO creates that directory on demand, named
+    after the *problem*, in the working directory. ``reports=False`` does not prevent it: it
+    suppresses the reports, not the directory a driver writes into. So every optimization test
+    used to leave a ``__main__<n>_out`` folder in the repository root.
+
+    The command line never hits this, because it always supplies a
+    :class:`~cdadt.blackbox.RunDirectory` that names the problem and says where it goes. Tests
+    construct analyses directly and mostly should not care, so the working directory is moved
+    once for the session instead of every test having to remember.
+
+    Everything the suite reads is addressed absolutely -- :data:`CASES`, the package, the
+    OpenConcept clone -- so nothing depends on where it runs from.
+    """
+    directory = tmp_path_factory.mktemp("cdadt_session")
+    previous = Path.cwd()
+    os.chdir(directory)
+    try:
+        yield directory
+    finally:
+        os.chdir(previous)
 
 
 def case_dict(name: str) -> dict[str, Any]:

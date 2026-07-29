@@ -40,7 +40,7 @@ The layers
 
 The command line is at the top rather than off to one side because it is the only caller that
 supplies a :class:`~cdadt.blackbox.RunDirectory`, and therefore the only one that causes anything
-to be written to disk. A study driven from Python writes nothing unless it asks to. See
+to be written to disk in a place of cdadt's choosing. See
 :doc:`artifacts`.
 
 The arrangement is open/closed in three places, each tested rather than asserted: a new

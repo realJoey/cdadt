@@ -397,11 +397,19 @@ class OpenConceptSizingBox:
 
     @property
     def run_directory(self) -> RunDirectory | None:
-        """Where this box's run writes its files, or ``None`` if it writes nothing.
+        """Where this box's run writes its files, or ``None`` for OpenMDAO's own default.
 
-        A box with no run directory builds its problem with ``reports=False``, which is what
-        keeps a test or an interface query from scattering output folders. Named for the
-        directory rather than ``run``, which is the method that converges the box.
+        With no run directory the problem is built unnamed and with ``reports=False``, and
+        *building* one then writes nothing. **Running a driver is different.** pyOptSparse writes
+        ``IPOPT.out`` into the problem's output directory, and OpenMDAO creates that directory on
+        demand -- ``<cwd>/__main__<n>_out`` for an unnamed problem. ``reports=False`` suppresses
+        the reports, not the directory a driver writes into.
+
+        That is OpenMDAO's normal behaviour and is left alone, but it is the reason the command
+        line always supplies a run directory: without one, an optimization leaves its log
+        wherever it happened to be run from, under a name that says nothing about the case.
+
+        Named for the directory rather than ``run``, which is the method that converges the box.
         """
         return self._run
 

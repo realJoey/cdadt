@@ -258,8 +258,16 @@ def test_a_box_with_a_run_directory_writes_into_openmdaos_own_output_directory(t
 
 
 @pytest.mark.integration
-def test_a_box_without_a_run_directory_writes_nothing(tmp_path, monkeypatch):
-    """A test or an interface query must not scatter output folders through the working tree."""
+def test_building_a_box_without_a_run_directory_writes_nothing(tmp_path, monkeypatch):
+    """An interface query must not scatter output folders through the working tree.
+
+    Scoped to *building* on purpose, and the name says so. It would be wrong to read this as
+    "a box without a run directory never writes": a driver writes its own log, and OpenMDAO
+    creates the problem's output directory on demand to hold it, which ``reports=False`` does
+    not prevent. That is why the command line always supplies a run directory, and why the test
+    suite runs from a temporary working directory -- see
+    :func:`tests.conftest.isolated_working_directory`.
+    """
     monkeypatch.chdir(tmp_path)
     box = OpenConceptSizingBox(MODEL, num_nodes=3, solver=SolverSettings(maxiter=0, err_on_non_converge=False))
     box.build()

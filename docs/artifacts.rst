@@ -236,8 +236,10 @@ including OpenMDAO's own files:
 
 The stamp is passed in rather than read from a clock, so a study can be reproduced into a named
 directory and a test can assert on the path. Omitting ``run`` entirely -- the default -- builds
-the problem with reports off and writes nothing at all, which is what a test or an interface
-query wants.
+the problem with reports off, so nothing is written when it is *built*. A driver is the
+exception: pyOptSparse writes ``IPOPT.out`` into the problem's output directory and OpenMDAO
+creates that directory on demand, which is exactly why the command line always supplies a run
+directory rather than leaving an optimization's log wherever it was run from.
 
 Matplotlib is an optional dependency, since only the figures need it:
 

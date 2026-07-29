@@ -47,8 +47,9 @@ class SizingAnalysis:
         The case. Everything else is derived from it.
     run : RunDirectory, optional
         Where this study writes its files. ``None`` -- the default -- means the box builds its
-        problem with reports off and writes nothing, which is what a test or an interface query
-        wants. The command line always supplies one.
+        problem with reports off, so building it writes nothing -- though a driver still writes
+        its own log into OpenMDAO's default output directory. The command line always supplies
+        one; see :attr:`~cdadt.blackbox.OpenConceptSizingBox.run_directory`.
     box, aircraft, performance, catalog, certification : optional
         The collaborators, each defaulting to what the ``config`` describes. They are injectable
         so that the coordinator can be driven against a substitute -- a second black box, or a
