@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from cdadt import BlackBoxError, OpenConceptSizingBox, SolverSettings
+from cdadt.blackbox import RunDirectory
 
 MODEL = "openconcept.examples.B738_sizing:B738SizingMissionAnalysis"
 
@@ -204,3 +207,62 @@ def test_the_shape_of_a_variable_the_box_does_not_publish_is_read_from_the_model
     assert box.shape_of(name) == (1,)
     # And the published path still answers from the declared shape rather than the fallback.
     assert box.shape_of("mission.climb.fltcond|h") == (3,)
+
+
+# =============================================================================================
+# Where a run writes
+# =============================================================================================
+
+
+@pytest.mark.unit
+def test_a_run_directory_must_be_named():
+    """An unnamed run has nowhere to put its files, and OpenMDAO would invent a name."""
+    with pytest.raises(ValueError, match="needs a name"):
+        RunDirectory("   ")
+
+
+@pytest.mark.unit
+def test_a_run_is_named_for_its_case_and_when_it_ran():
+    """The stamp is passed in rather than read from a clock, so a run is reproducible by name."""
+    run = RunDirectory.for_case("cases/b738.yaml", stamp="20260728_193000")
+
+    assert run.name == "b738_20260728_193000"
+    assert run.root == Path(RunDirectory.DEFAULT_ROOT)
+    assert repr(run) == "RunDirectory('b738_20260728_193000', root='run_outputs')"
+
+
+@pytest.mark.unit
+def test_a_run_has_no_directory_until_its_problem_is_built():
+    """OpenMDAO decides the path, so asking before it has been asked is an error, not a guess."""
+    run = RunDirectory("unbuilt")
+    with pytest.raises(BlackBoxError, match="has no directory yet"):
+        _ = run.path
+
+
+@pytest.mark.integration
+def test_a_box_with_a_run_directory_writes_into_openmdaos_own_output_directory(tmp_path):
+    """The claim the whole design rests on: cdadt's files and OpenMDAO's land in one place.
+
+    ``.openmdao_out`` is OpenMDAO's own marker, and ``reports`` is written by OpenMDAO rather
+    than by cdadt. Their presence is what says this directory is the problem's, not a folder
+    made beside it -- which is why the driver's log ends up here too.
+    """
+    run = RunDirectory("probe_run", root=tmp_path)
+    box = OpenConceptSizingBox(MODEL, num_nodes=3, solver=SolverSettings(maxiter=0, err_on_non_converge=False), run=run)
+    box.build()
+
+    assert box.run_directory is run
+    assert run.path == tmp_path / "probe_run_out"
+    assert (run.path / ".openmdao_out").exists()
+    assert (run.path / "reports").is_dir()
+
+
+@pytest.mark.integration
+def test_a_box_without_a_run_directory_writes_nothing(tmp_path, monkeypatch):
+    """A test or an interface query must not scatter output folders through the working tree."""
+    monkeypatch.chdir(tmp_path)
+    box = OpenConceptSizingBox(MODEL, num_nodes=3, solver=SolverSettings(maxiter=0, err_on_non_converge=False))
+    box.build()
+
+    assert box.run_directory is None
+    assert not list(tmp_path.iterdir()), f"building scattered {[p.name for p in tmp_path.iterdir()]}"

@@ -42,16 +42,112 @@ from __future__ import annotations
 import difflib
 import importlib
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import openmdao.api as om
 
-__all__ = ["BlackBoxError", "OpenConceptSizingBox", "SolverSettings", "VariableInfo"]
+__all__ = ["BlackBoxError", "OpenConceptSizingBox", "RunDirectory", "SolverSettings", "VariableInfo"]
 
 
 class BlackBoxError(Exception):
     """Raised when the black box cannot be loaded, built, or addressed as asked."""
+
+
+class RunDirectory:
+    """Where one run leaves everything it produces.
+
+    OpenMDAO already has this concept: a :class:`openmdao.api.Problem` given a ``name`` writes
+    into ``<work_dir>/<name>_out``, and everything downstream of it follows -- its reports, and
+    the optimizer's own log, since pyOptSparse writes ``IPOPT.out`` into the working directory
+    the problem set up. cdadt does not reimplement any of that. It names the problem and says
+    where the work directory is, then writes its own files into the directory OpenMDAO made.
+
+    So a run leaves one folder holding both halves of the record::
+
+        run_outputs/b738_20260728_193000_out/
+            n2.html          report.txt    results.json      <- cdadt
+            mission.pdf      trajectory.pdf   takeoff.pdf    <- cdadt
+            .openmdao_out    reports/       IPOPT.out        <- OpenMDAO and the driver
+
+    The ``_out`` suffix is OpenMDAO's, not a choice made here. Matching its convention is what
+    makes the driver log and the reports land in the same place as everything else rather than
+    somewhere they have to be collected from.
+
+    Parameters
+    ----------
+    name : str
+        Name for this run, used as the directory name. Usually the case file's stem and a
+        timestamp, so runs of the same case accumulate rather than overwrite.
+    root : str or Path, optional
+        Where run directories are created. Default ``"run_outputs"``.
+    reports : bool, optional
+        Whether OpenMDAO writes its own reports. Default ``True``, which is what produces
+        ``reports/n2.html`` and ``reports/inputs.html`` beside cdadt's files.
+
+    Examples
+    --------
+    >>> run = RunDirectory("b738_20260728_193000")
+    >>> run.name
+    'b738_20260728_193000'
+    """
+
+    #: Default parent of every run directory.
+    DEFAULT_ROOT: str = "run_outputs"
+
+    def __init__(self, name: str, root: str | Path = DEFAULT_ROOT, reports: bool = True) -> None:
+        if not str(name).strip():
+            raise ValueError("A run directory needs a name; otherwise its files have nowhere to go.")
+        self._name = str(name)
+        self._root = Path(root)
+        self._reports = bool(reports)
+        self._problem: om.Problem | None = None
+
+    @classmethod
+    def for_case(cls, case: str | Path, stamp: str, root: str | Path = DEFAULT_ROOT) -> RunDirectory:
+        """Return a run directory named for a case file and a timestamp.
+
+        The stamp is passed in rather than read from a clock here, so that a study can be
+        reproduced into a named directory and a test can assert on the path.
+        """
+        return cls(f"{Path(case).stem}_{stamp}", root=root)
+
+    @property
+    def name(self) -> str:
+        """The run's name, which is also its directory name without OpenMDAO's suffix."""
+        return self._name
+
+    @property
+    def root(self) -> Path:
+        """Where run directories are created."""
+        return self._root
+
+    def problem(self, model: om.Group) -> om.Problem:
+        """Return the OpenMDAO problem that writes into this run's directory."""
+        self._problem = om.Problem(model=model, name=self._name, work_dir=self._root, reports=self._reports)
+        return self._problem
+
+    @property
+    def path(self) -> Path:
+        """The directory OpenMDAO made for this run.
+
+        Raises
+        ------
+        BlackBoxError
+            If no problem has been built yet, since OpenMDAO decides the path and has not been
+            asked.
+        """
+        if self._problem is None:
+            raise BlackBoxError(
+                f"The run '{self._name}' has no directory yet, because its problem has not been built. "
+                f"Build the black box first."
+            )
+        return Path(self._problem.get_outputs_dir(mkdir=True))
+
+    def __repr__(self) -> str:
+        """Return a representation naming the run and where it lives."""
+        return f"RunDirectory({self._name!r}, root={str(self._root)!r})"
 
 
 class SolverSettings:
@@ -205,7 +301,13 @@ class OpenConceptSizingBox:
     #: component drives, are exactly the variables a caller may set and a driver may move.
     INDEP_VAR_TAG = "openmdao:indep_var"
 
-    def __init__(self, model: str, num_nodes: int, solver: SolverSettings | None = None) -> None:
+    def __init__(
+        self,
+        model: str,
+        num_nodes: int,
+        solver: SolverSettings | None = None,
+        run: RunDirectory | None = None,
+    ) -> None:
         if num_nodes % 2 == 0:
             raise ValueError(
                 f"num_nodes must be odd because the box integrates fuel burn with Simpson's rule; got {num_nodes}."
@@ -213,6 +315,7 @@ class OpenConceptSizingBox:
         self._model_spec = str(model)
         self._num_nodes = int(num_nodes)
         self._solver = solver if solver is not None else SolverSettings()
+        self._run = run
         self._model_class = self._resolve(self._model_spec)
         self._problem: om.Problem | None = None
         self._settable: dict[str, VariableInfo] | None = None
@@ -292,6 +395,16 @@ class OpenConceptSizingBox:
         """The Newton solve configuration."""
         return self._solver
 
+    @property
+    def run_directory(self) -> RunDirectory | None:
+        """Where this box's run writes its files, or ``None`` if it writes nothing.
+
+        A box with no run directory builds its problem with ``reports=False``, which is what
+        keeps a test or an interface query from scattering output folders. Named for the
+        directory rather than ``run``, which is the method that converges the box.
+        """
+        return self._run
+
     # -- building ------------------------------------------------------------------------
 
     def build(
@@ -324,7 +437,7 @@ class OpenConceptSizingBox:
         model = self._model_class(num_nodes=self._num_nodes)
         self._attach_solvers(model)
 
-        problem = om.Problem(model=model, reports=False)
+        problem = self._run.problem(model) if self._run is not None else om.Problem(model=model, reports=False)
         if driver is not None:
             problem.driver = driver
         for hook in register:
