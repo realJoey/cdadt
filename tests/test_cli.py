@@ -250,26 +250,67 @@ def test_optimize_prints_without_being_asked_to_archive(tmp_path, capsys):
     assert not list(tmp_path.glob("*.json"))
 
 
-@pytest.mark.integration
-def test_size_can_leave_the_files_a_design_review_asks_for(tmp_path, capsys):
-    """``--outputs`` writes the diagram, the trajectory, the report and the numbers, in one place."""
-    case = _small_case(tmp_path, "b738.yaml")
-    destination = tmp_path / "run_out"
-    assert main(["size", str(case), "--outputs", str(destination)]) == 0
+#: What a sizing run must leave behind, whether or not it was asked to. The first four are
+#: cdadt's; ``.openmdao_out`` and ``reports`` are OpenMDAO's, and their presence is the evidence
+#: that the run directory really is the problem's own output directory rather than a folder
+#: cdadt made beside it.
+SIZING_ARTEFACTS = {
+    "report.txt",
+    "results.json",
+    "n2.html",
+    "mission.pdf",
+    "trajectory.pdf",
+    "takeoff.pdf",
+    ".openmdao_out",
+    "reports",
+}
 
-    written = {path.name for path in destination.iterdir()}
-    assert written == {"n2.html", "trajectory.pdf", "report.txt", "results.json"}
-    assert all((destination / name).stat().st_size > 0 for name in written)
+
+@pytest.mark.integration
+def test_a_sizing_run_always_leaves_a_complete_record(tmp_path, capsys):
+    """No flag: a study whose files depend on remembering a flag is a study with no record."""
+    case = _small_case(tmp_path, "b738.yaml")
+    root = tmp_path / "run_outputs"
+    assert main(["size", str(case), "--run-outputs", str(root)]) == 0
+
+    runs = list(root.iterdir())
+    assert len(runs) == 1, "one invocation, one run directory"
+    assert runs[0].name.startswith(f"{case.stem}_"), "the directory is named for the case it ran"
+    assert runs[0].name.endswith("_out"), "OpenMDAO's own suffix, because it is OpenMDAO's directory"
+
+    assert {path.name for path in runs[0].iterdir()} == SIZING_ARTEFACTS
+    assert all((runs[0] / name).stat().st_size > 0 for name in SIZING_ARTEFACTS - {".openmdao_out", "reports"})
 
     printed = capsys.readouterr().out
-    assert "Wrote " in printed
+    assert "Run written to" in printed
     # The archived report is the printed one, not a second rendering of it.
-    assert (destination / "report.txt").read_text(encoding="utf-8") in printed
+    assert (runs[0] / "report.txt").read_text(encoding="utf-8") in printed
 
 
 @pytest.mark.integration
-def test_optimize_can_leave_the_same_files(tmp_path, capsys):
-    """And its results.json is the full record: constraints, provenance, margins and statuses."""
+def test_two_runs_of_one_case_accumulate_rather_than_overwrite(tmp_path):
+    """Each run is stamped, so a comparison against last week's answer is still possible."""
+    case = _small_case(tmp_path, "b738.yaml")
+    root = tmp_path / "run_outputs"
+
+    assert main(["size", str(case), "--run-outputs", str(root)]) == 0
+    first = {path.name for path in root.iterdir()}
+
+    # The stamp is to the second, so force a distinct one rather than sleeping for a test.
+    next(iter(root.iterdir())).rename(root / "b738_20260101_000000_out")
+    assert main(["size", str(case), "--run-outputs", str(root)]) == 0
+
+    assert len(list(root.iterdir())) == 2, f"the second run overwrote the first ({first})"
+
+
+@pytest.mark.integration
+def test_an_optimization_run_leaves_the_drivers_own_log_beside_everything_else(tmp_path, capsys):
+    """IPOPT.out lands in the run directory because it *is* the problem's output directory.
+
+    That is the whole reason for using OpenMDAO's mechanism rather than making a folder next to
+    it: pyOptSparse writes its log wherever the problem was set up, and nothing cdadt does moves
+    it afterwards.
+    """
 
     def shrink(data):
         data["solver"]["maxiter"] = 60
@@ -280,14 +321,18 @@ def test_optimize_can_leave_the_same_files(tmp_path, capsys):
         data["constraints"] = [{"name": "takeoff_field_length", "upper": 8000.0, "units": "ft"}]
 
     case = _small_case(tmp_path, "b738_optimization.yaml", shrink)
-    destination = tmp_path / "opt_out"
-    assert main(["optimize", str(case), "--outputs", str(destination)]) == 0
+    root = tmp_path / "run_outputs"
+    assert main(["optimize", str(case), "--run-outputs", str(root)]) == 0
     capsys.readouterr()
 
-    archived = json.loads((destination / "results.json").read_text(encoding="utf-8"))
+    run = next(iter(root.iterdir()))
+    written = {path.name for path in run.iterdir()}
+    assert written >= SIZING_ARTEFACTS, f"missing {SIZING_ARTEFACTS - written}"
+    assert "IPOPT.out" in written, "the driver's own log is not in the run directory"
+
+    archived = json.loads((run / "results.json").read_text(encoding="utf-8"))
     assert archived["objective"] == "total_fuel"
     assert [entry["name"] for entry in archived["constraints"]] == ["takeoff_field_length"]
-    assert (destination / "trajectory.pdf").stat().st_size > 0
 
 
 @pytest.mark.integration

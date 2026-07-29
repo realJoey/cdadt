@@ -36,13 +36,14 @@ import json
 import sys
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
 from cdadt import __version__
 from cdadt.analysis import SizingAnalysis
 from cdadt.artifacts import StudyArtifacts
-from cdadt.blackbox import OpenConceptSizingBox
+from cdadt.blackbox import OpenConceptSizingBox, RunDirectory
 from cdadt.config import Config
 from cdadt.optimization import Optimizer
 
@@ -93,23 +94,45 @@ class Command(ABC):
 
 
 class StudyCommand(Command):
-    """A command that runs a study and can archive what it produced.
+    """A command that runs a study and leaves a complete record of it behind.
 
-    Both studies -- sizing and optimization -- take the same two archiving options and write the
-    same four files, so that behaviour lives here once. What differs is only what is run and what
-    the archived payload contains, which is what the subclasses supply.
+    Both studies -- sizing and optimizing -- write the same files into the same place, so that
+    behaviour lives here once. What differs is only what is run and what the archived payload
+    contains, which is what the subclasses supply.
+
+    **Every run writes its outputs.** Not on request: a study whose files depend on a flag is a
+    study whose record depends on remembering the flag. The run directory is
+    :class:`~cdadt.blackbox.RunDirectory`, which is OpenMDAO's own mechanism, so the driver's log
+    and OpenMDAO's reports land beside cdadt's files rather than in the working directory.
     """
-
-    OUTPUTS_HELP: ClassVar[str] = "also write the N2 diagram, the trajectory plot and the report into this directory"
 
     verbose_help: ClassVar[str] = "print each continuation step"
 
     def configure(self, parser: argparse.ArgumentParser) -> None:
-        """Declare the case file, the two archiving options and the verbosity flag."""
+        """Declare the case file, where runs go, and the verbosity flag."""
         super().configure(parser)
+        parser.add_argument(
+            "--run-outputs",
+            type=Path,
+            default=Path(RunDirectory.DEFAULT_ROOT),
+            help=f"where run directories are created (default: {RunDirectory.DEFAULT_ROOT})",
+        )
         parser.add_argument("--json", type=Path, default=None, help="also write the results to this JSON file")
-        parser.add_argument("--outputs", type=Path, default=None, help=self.OUTPUTS_HELP)
         parser.add_argument("-v", "--verbose", action="store_true", help=self.verbose_help)
+
+    @staticmethod
+    def run_directory(arguments: argparse.Namespace) -> RunDirectory:
+        """Return the run directory this invocation writes into.
+
+        Named for the case and the moment it was run, so repeated runs of one case accumulate
+        instead of overwriting each other. The clock is read here, at the edge, and the stamp is
+        passed in as data -- everything below this point is reproducible given the same stamp.
+        """
+        return RunDirectory.for_case(
+            arguments.case,
+            stamp=datetime.now().strftime("%Y%m%d_%H%M%S"),
+            root=arguments.run_outputs,
+        )
 
     def archive(
         self,
@@ -118,32 +141,25 @@ class StudyCommand(Command):
         report: str,
         payload: dict[str, Any],
     ) -> None:
-        """Write whichever of the JSON file and the output directory were asked for."""
+        """Write the report, the numbers and the three figures into the run directory."""
         if arguments.json:
             arguments.json.write_text(json.dumps(payload, indent=2), encoding="utf-8")
             print(f"Results written to {arguments.json}")
-        if arguments.outputs:
-            self._write_artifacts(arguments, analysis, report, payload)
 
-    @staticmethod
-    def _write_artifacts(
-        arguments: argparse.Namespace,
-        analysis: SizingAnalysis,
-        report: str,
-        payload: dict[str, Any],
-    ) -> None:
-        """Write the model diagram, the trajectory and the report, and say what was written."""
-        artifacts = StudyArtifacts(arguments.outputs)
+        artifacts = StudyArtifacts(analysis.box.run_directory.path)
+        title = f"{arguments.case.stem} -- {analysis.box.model_spec}"
+        mission_path = analysis.config.mission_path
+
         artifacts.write_text(report, "report.txt")
         artifacts.write_json(payload, "results.json")
         artifacts.write_n2(analysis.box)
-        artifacts.write_trajectory(
-            analysis.box,
-            title=f"{arguments.case.stem} -- {analysis.box.model_spec}",
-            mission_path=analysis.config.mission_path,
-        )
+        artifacts.write_mission_profile(analysis.box, title=title, mission_path=mission_path)
+        artifacts.write_trajectory(analysis.box, title=title, mission_path=mission_path)
+        artifacts.write_takeoff(analysis.box, title=title, mission_path=mission_path)
+
+        print(f"\nRun written to {artifacts.directory}")
         for path in artifacts.written():
-            print(f"Wrote {path}")
+            print(f"  {path.name}")
 
 
 class SizeCommand(StudyCommand):
@@ -154,7 +170,7 @@ class SizeCommand(StudyCommand):
 
     def execute(self, arguments: argparse.Namespace) -> int:
         """Run a sizing case and print the results."""
-        analysis = SizingAnalysis(Config.from_yaml(arguments.case))
+        analysis = SizingAnalysis(Config.from_yaml(arguments.case), run=self.run_directory(arguments))
         results = analysis.run(verbose=arguments.verbose)
         report = results.report(analysis.catalog)
         print(report)
@@ -171,13 +187,12 @@ class OptimizeCommand(StudyCommand):
 
     def execute(self, arguments: argparse.Namespace) -> int:
         """Run an optimization case and print the comparison and traceability matrix."""
-        analysis = SizingAnalysis(Config.from_yaml(arguments.case))
+        analysis = SizingAnalysis(Config.from_yaml(arguments.case), run=self.run_directory(arguments))
         optimizer = Optimizer(analysis)
         outcome = optimizer.run(verbose=arguments.verbose)
         report = optimizer.report(outcome)
         print(report)
-        if arguments.json or arguments.outputs:
-            self.archive(arguments, analysis, report, self._payload(outcome))
+        self.archive(arguments, analysis, report, self._payload(outcome))
         # A study that did not converge, or that ends on a violated constraint, is not a success,
         # and a shell that treats it as one will archive it as one.
         return 0 if outcome.succeeded else 1

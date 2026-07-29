@@ -10,7 +10,12 @@ The layers
 
 .. code-block:: text
 
+   CommandLineInterface      composes Command subclasses; owns the parser and the dispatch
+     |                         SizeCommand / OptimizeCommand are StudyCommands
+     |                         InspectCommand reads the interface without running
+     |
    Config                    one YAML case file, validated hard
+     |                         read through CaseFileSection, which carries its own address
      |
      +-- Aircraft            composes the airframe disciplines, routes every ac| name
      |     +-- Geometry      wing, fuselage, nacelles, gear
@@ -23,11 +28,26 @@ The layers
      +-- Performance         owns the InitialConditions and the ContinuationLadder
      |
      +-- OpenConceptSizingBox   the black box: loaded by name, set, converged, read
-           |
+           |                      RunDirectory decides where its problem writes
    SizingAnalysis            builds, converges, reads -> SizingResults
-     |
+     |                         the coordinator; every collaborator is injectable
    Optimizer                 declares design variables, objective and CertificationBasis,
-                             converges a baseline, drives -> OptimizationOutcome
+     |                       converges a baseline, drives -> OptimizationOutcome
+     |
+   StudyArtifacts            writes the record into the run directory
+         MissionTrajectory   the seven steady phases, discovered and ordered
+         TakeoffTrajectory   the balanced field: the continued and rejected paths
+
+The command line is at the top rather than off to one side because it is the only caller that
+supplies a :class:`~cdadt.blackbox.RunDirectory`, and therefore the only one that causes anything
+to be written to disk. A study driven from Python writes nothing unless it asks to. See
+:doc:`artifacts`.
+
+The arrangement is open/closed in three places, each tested rather than asserted: a new
+discipline is a new :class:`~cdadt.disciplines.base.Discipline` passed to ``Aircraft``, a new
+command is a new :class:`~cdadt.cli.Command` passed to ``CommandLineInterface``, and a new black
+box is a different ``model:`` line in the case file. None of the three requires editing anything
+that already exists.
 
 What a discipline is
 --------------------

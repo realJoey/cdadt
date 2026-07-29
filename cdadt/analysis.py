@@ -26,7 +26,7 @@ from collections.abc import Callable, Sequence
 import openmdao.api as om
 
 from cdadt.aircraft import Aircraft
-from cdadt.blackbox import OpenConceptSizingBox
+from cdadt.blackbox import OpenConceptSizingBox, RunDirectory
 from cdadt.config import Config
 from cdadt.disciplines import Discipline, Performance
 from cdadt.results import ResponseCatalog, SizingResults
@@ -37,10 +37,21 @@ __all__ = ["SizingAnalysis"]
 class SizingAnalysis:
     """A full mission sizing analysis of one aircraft against one mission.
 
+    This is the coordinator: it owns the black box and the disciplines, and it is the only thing
+    that talks to both. The disciplines never reach each other.
+
     Parameters
     ----------
     config : Config
         The case. Everything else is derived from it.
+    run : RunDirectory, optional
+        Where this study writes its files. ``None`` -- the default -- means the box builds its
+        problem with reports off and writes nothing, which is what a test or an interface query
+        wants. The command line always supplies one.
+    box, aircraft, performance, catalog : optional
+        The collaborators, each defaulting to what the ``config`` describes. They are injectable
+        so that the coordinator can be driven against a substitute -- a second black box, or a
+        stand-in with no model to build -- without going through a case file to do it.
 
     Examples
     --------
@@ -50,16 +61,32 @@ class SizingAnalysis:
     78345.6...
     """
 
-    def __init__(self, config: Config) -> None:
+    def __init__(
+        self,
+        config: Config,
+        *,
+        run: RunDirectory | None = None,
+        box: OpenConceptSizingBox | None = None,
+        aircraft: Aircraft | None = None,
+        performance: Performance | None = None,
+        catalog: ResponseCatalog | None = None,
+    ) -> None:
         self._config = config
-        self._box = OpenConceptSizingBox(
-            model=config.black_box.model,
-            num_nodes=config.black_box.num_nodes,
-            solver=config.solver.settings(),
+        self._box = (
+            box
+            if box is not None
+            else OpenConceptSizingBox(
+                model=config.black_box.model,
+                num_nodes=config.black_box.num_nodes,
+                solver=config.solver.settings(),
+                run=run,
+            )
         )
-        self._aircraft = Aircraft(config.parameters())
-        self._performance = Performance(config.initial_conditions(), config.continuation)
-        self._catalog = ResponseCatalog()
+        self._aircraft = aircraft if aircraft is not None else Aircraft(config.parameters())
+        self._performance = (
+            performance if performance is not None else Performance(config.initial_conditions(), config.continuation)
+        )
+        self._catalog = catalog if catalog is not None else ResponseCatalog()
 
     # -- state ---------------------------------------------------------------------------
 

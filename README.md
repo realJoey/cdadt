@@ -135,10 +135,11 @@ cdadt size cases/b738.yaml                        # ~5 s at 21 nodes per phase
 cdadt optimize cases/b738_optimization.yaml       # ~2 min
 cdadt inspect cases/b738.yaml --what inputs       # what the box accepts
 
-cdadt size cases/b738.yaml --outputs b738_out     # + n2.html, trajectory.pdf, report.txt, results.json
+# every run writes run_outputs/<case>_<stamp>_out/ with the report, the numbers,
+# the N2, three figures, OpenMDAO's own reports and the optimizer's log
 
-pytest -q -m "not slow"                           # the fast loop, 231 tests, ~2 min
-pytest -q                                         # 287 tests, ~8 min
+pytest -q -m "not slow"                           # the fast loop, 249 tests, ~2 min
+pytest -q                                         # 308 tests, ~9 min
 pytest -q --cov=cdadt                             # and 100% statement + branch coverage
 pytest -q -m verification                         # grid, derivatives, solver, reproducibility
 pytest -q -m validation                           # reference match + physical checks
@@ -189,7 +190,7 @@ docs/               Sphinx
 | `mission.rst` | The initial conditions, and why the continuation ladder is part of the interface |
 | `certification.rst` | Constraints, provenance, the traceability matrix, what cannot be constrained |
 | `optimization.rst` | Design variables, scaling, driver choice, and why IPOPT |
-| `artifacts.rst` | The files `--outputs` writes, and what is plotted |
+| `artifacts.rst` | What every run writes into `run_outputs/`, and what is plotted |
 | `verification.rst` | Grid convergence, derivative accuracy, solver tolerance, reproducibility, optimality |
 | `validation.rst` | What is validated, against what, **and what is not** |
 | `openconcept.rst` | The survey of all ~30,000 lines, and why this black box is the only candidate |

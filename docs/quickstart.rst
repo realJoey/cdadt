@@ -69,16 +69,20 @@ the traceability matrix:
 
    4 of 4 constraints met, 1 active, 0 violated.
 
-Leave the files a review asks for
----------------------------------
+Every run leaves the files a review asks for
+---------------------------------------------
 
-.. code-block:: bash
+Both commands above already did this -- there is no flag. Each invocation writes its own
+directory under ``run_outputs/``, named for the case and the moment it ran::
 
-   cdadt size cases/b738.yaml --outputs b738_out
+   run_outputs/b738_20260728_201512_out/
+     report.txt      results.json    n2.html
+     mission.pdf     trajectory.pdf  takeoff.pdf
+     .openmdao_out   reports/
 
-Writes ``n2.html`` (OpenMDAO's diagram of the model that was actually run), ``trajectory.pdf``
-(what was flown, against range), ``report.txt`` and ``results.json`` into one directory. Works on
-``optimize`` too. See :doc:`artifacts`.
+``mission.pdf`` reproduces ``B738_sizing.py``'s own figure and ``trajectory.pdf`` reproduces
+``B738.py``'s; ``takeoff.pdf`` draws the balanced field, which neither example plots. An
+optimization additionally leaves ``IPOPT.out``, the optimizer's own log. See :doc:`artifacts`.
 
 Read the interface
 ------------------
