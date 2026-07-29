@@ -138,8 +138,8 @@ cdadt inspect cases/b738.yaml --what inputs       # what the box accepts
 # every run writes run_outputs/<case>_<stamp>_out/ with the report, the numbers,
 # the N2, three figures, OpenMDAO's own reports and the optimizer's log
 
-pytest -q -m "not slow"                           # the fast loop, 249 tests, ~2 min
-pytest -q                                         # 308 tests, ~9 min
+pytest -q -m "not slow"                           # the fast loop, 250 tests, ~2 min
+pytest -q                                         # 310 tests, ~9 min
 pytest -q --cov=cdadt                             # and 100% statement + branch coverage
 pytest -q -m verification                         # grid, derivatives, solver, reproducibility
 pytest -q -m validation                           # reference match + physical checks
@@ -195,6 +195,7 @@ docs/               Sphinx
 | `validation.rst` | What is validated, against what, **and what is not** |
 | `openconcept.rst` | The survey of all ~30,000 lines, and why this black box is the only candidate |
 | `interface.rst` | The generated input/output reference |
+| `developing.rst` | The working guide: the loop, the gates a change must pass, where each kind of change belongs |
 
 ## License
 

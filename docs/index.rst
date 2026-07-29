@@ -88,6 +88,7 @@ binds. See :doc:`optimization` and, for what is *not* established, :doc:`validat
 
    openconcept
    interface
+   developing
    api/index
 
 Indices

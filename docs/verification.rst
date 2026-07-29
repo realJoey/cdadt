@@ -263,14 +263,15 @@ statement about what has actually been established:
      - Count
      - Claim
    * - ``unit``
-     - 188
+     - 187
      - One cdadt class behaves as specified, with no model built
    * - ``contract``
      - 14
      - The cdadt/OpenConcept boundary and the ownership map hold
    * - ``integration``
-     - 48
-     - A real OpenConcept model builds, converges and is driven
+     - 51
+     - A real model builds, converges and is driven -- OpenConcept's, or for two of them a
+       stand-in built to check what OpenMDAO accepts and keeps
    * - ``verification``
      - 39
      - The equations are solved right: grid, solver, derivatives, reproducibility, optimality, consistency
@@ -278,8 +279,8 @@ statement about what has actually been established:
      - 19
      - The right equations were solved: against the reference example, and against physical reality
    * - **total**
-     - **308**
-     - ~9 minutes; ``-m "not slow"`` runs 249 of them in about two
+     - **310**
+     - ~9 minutes; ``-m "not slow"`` runs 250 of them in about two
 
 Coverage
 --------

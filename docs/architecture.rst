@@ -78,6 +78,30 @@ module that *looked* like it modelled aerodynamics, in a tool whose results are 
 thesis, would be a page of documentation away from a false claim. It sets the inputs to somebody
 else's drag buildup and reads two lift coefficients back.
 
+:class:`~cdadt.disciplines.base.Discipline` is an abstract base, and ``discipline_name`` is
+genuinely abstract -- it is the one thing no domain can inherit, being the key it is reported and
+looked up under. A subclass that omits it is refused when the class is *written*, by
+``__init_subclass__``, rather than surfacing later as a duplicate-name error from ``Aircraft`` or
+not at all. Nothing else is abstract, because a subclass overrides no methods: it declares three
+class attributes and that is the whole contract.
+
+Certification is a domain, and is not a discipline
+---------------------------------------------------
+
+:class:`~cdadt.certification.CertificationBasis` encapsulates the certification domain, and
+:class:`~cdadt.analysis.SizingAnalysis` owns it alongside the disciplines. It is deliberately
+**not** a :class:`~cdadt.disciplines.base.Discipline`, and the reason is the definition above: a
+discipline owns a slice of the black box's *variable interface* -- variables it sets, responses
+it reports. Certification sets nothing and publishes nothing. It reads quantities the other
+disciplines already report and judges them against stated limits, which is a different
+relationship to the box, and forcing it into the same base class would describe it wrongly: it
+would appear in the ownership map owning nothing and in the results table reporting nothing.
+
+It is owned by the analysis rather than by :class:`~cdadt.optimization.Optimizer`, which used to
+build it. That mattered in practice: asking whether a *sized* aeroplane meets its certification
+basis required constructing an optimizer that was never going to run. A sizing study can now
+answer it directly, and a test does exactly that.
+
 Ownership, and why it is checked
 --------------------------------
 
