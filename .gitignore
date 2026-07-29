@@ -16,7 +16,6 @@ n2.html
 coloring_files/
 run_outputs/
 *_out/
-reports/
 IPOPT.out
 SLSQP.out
 .ruff_cache/

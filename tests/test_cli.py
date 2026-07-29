@@ -168,6 +168,46 @@ def test_optimize_prints_without_being_asked_to_archive(tmp_path, capsys):
 
 
 @pytest.mark.integration
+def test_size_can_leave_the_files_a_design_review_asks_for(tmp_path, capsys):
+    """``--outputs`` writes the diagram, the trajectory, the report and the numbers, in one place."""
+    case = _small_case(tmp_path, "b738.yaml")
+    destination = tmp_path / "run_out"
+    assert main(["size", str(case), "--outputs", str(destination)]) == 0
+
+    written = {path.name for path in destination.iterdir()}
+    assert written == {"n2.html", "trajectory.pdf", "report.txt", "results.json"}
+    assert all((destination / name).stat().st_size > 0 for name in written)
+
+    printed = capsys.readouterr().out
+    assert "Wrote " in printed
+    # The archived report is the printed one, not a second rendering of it.
+    assert (destination / "report.txt").read_text(encoding="utf-8") in printed
+
+
+@pytest.mark.integration
+def test_optimize_can_leave_the_same_files(tmp_path, capsys):
+    """And its results.json is the full record: constraints, provenance, margins and statuses."""
+
+    def shrink(data):
+        data["solver"]["maxiter"] = 60
+        data["driver"] = {"name": "IPOPT", "maxiter": 5, "tol": 1e-4, "derivative_mode": "fwd"}
+        for spec in data["design_variables"].values():
+            spec.pop("optimize", None)
+        data["design_variables"]["ac|geom|wing|AR"]["optimize"] = {"lower": 9.3, "upper": 9.7}
+        data["constraints"] = [{"name": "takeoff_field_length", "upper": 8000.0, "units": "ft"}]
+
+    case = _small_case(tmp_path, "b738_optimization.yaml", shrink)
+    destination = tmp_path / "opt_out"
+    assert main(["optimize", str(case), "--outputs", str(destination)]) == 0
+    capsys.readouterr()
+
+    archived = json.loads((destination / "results.json").read_text(encoding="utf-8"))
+    assert archived["objective"] == "total_fuel"
+    assert [entry["name"] for entry in archived["constraints"]] == ["takeoff_field_length"]
+    assert (destination / "trajectory.pdf").stat().st_size > 0
+
+
+@pytest.mark.integration
 def test_inspect_can_show_the_outputs_alone(capsys):
     """The other half of the interface, and the half a results reader needs."""
     assert main(["inspect", str(CASES / "b738.yaml"), "--what", "outputs", "--filter", "ac|weights"]) == 0

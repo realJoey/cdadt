@@ -245,7 +245,7 @@ class SizingResults:
                     lines.append(f"  {name:<28s} {float(array.reshape(-1)[0]):16.4f}  {units}")
                 else:
                     lines.append(
-                        f"  {name:<28s} {array.min():7.4f} to {array.max():<7.4f} " f"({array.size} nodes)  {units}"
+                        f"  {name:<28s} {array.min():7.4f} to {array.max():<7.4f} ({array.size} nodes)  {units}"
                     )
             lines.append("")
 

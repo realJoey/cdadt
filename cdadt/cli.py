@@ -15,7 +15,8 @@ Three commands, all taking a case file:
     that stays true.
 
 Each command can write its results to JSON with ``--json``, so a study is archivable without
-re-running it.
+re-running it, and ``--outputs <dir>`` additionally leaves the model diagram, the flown
+trajectory and the printed report in one directory. See :mod:`cdadt.artifacts`.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from pathlib import Path
 
 from cdadt import __version__
 from cdadt.analysis import SizingAnalysis
+from cdadt.artifacts import StudyArtifacts
 from cdadt.blackbox import OpenConceptSizingBox
 from cdadt.config import Config
 from cdadt.optimization import Optimizer
@@ -45,14 +47,18 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"cdadt {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
 
+    outputs_help = "also write the N2 diagram, the trajectory plot and the report into this directory"
+
     size = commands.add_parser("size", help="converge a case and report every response")
     size.add_argument("case", type=Path, help="path to the case file")
     size.add_argument("--json", type=Path, default=None, help="also write the results to this JSON file")
+    size.add_argument("--outputs", type=Path, default=None, help=outputs_help)
     size.add_argument("-v", "--verbose", action="store_true", help="print each continuation step")
 
     optimize = commands.add_parser("optimize", help="optimize a case against its certification basis")
     optimize.add_argument("case", type=Path, help="path to the case file")
     optimize.add_argument("--json", type=Path, default=None, help="also write the results to this JSON file")
+    optimize.add_argument("--outputs", type=Path, default=None, help=outputs_help)
     optimize.add_argument("-v", "--verbose", action="store_true", help="print continuation and driver progress")
 
     inspect = commands.add_parser("inspect", help="print the interface of the case's black box")
@@ -72,11 +78,34 @@ def _size(arguments: argparse.Namespace) -> int:
     """Run a sizing case and print the results."""
     analysis = SizingAnalysis(Config.from_yaml(arguments.case))
     results = analysis.run(verbose=arguments.verbose)
-    print(results.report(analysis.catalog))
+    report = results.report(analysis.catalog)
+    print(report)
     if arguments.json:
         arguments.json.write_text(json.dumps(results.to_dict(), indent=2), encoding="utf-8")
         print(f"Results written to {arguments.json}")
+    if arguments.outputs:
+        _write_artifacts(arguments, analysis, report, results.to_dict())
     return 0
+
+
+def _write_artifacts(
+    arguments: argparse.Namespace,
+    analysis: SizingAnalysis,
+    report: str,
+    payload: dict,
+) -> None:
+    """Write the model diagram, the trajectory and the report, and say what was written."""
+    artifacts = StudyArtifacts(arguments.outputs)
+    artifacts.write_text(report, "report.txt")
+    artifacts.write_json(payload, "results.json")
+    artifacts.write_n2(analysis.box)
+    artifacts.write_trajectory(
+        analysis.box,
+        title=f"{arguments.case.stem} -- {analysis.box.model_spec}",
+        mission_path=analysis.config.mission_path,
+    )
+    for path in artifacts.written():
+        print(f"Wrote {path}")
 
 
 def _optimize(arguments: argparse.Namespace) -> int:
@@ -84,8 +113,9 @@ def _optimize(arguments: argparse.Namespace) -> int:
     analysis = SizingAnalysis(Config.from_yaml(arguments.case))
     optimizer = Optimizer(analysis)
     outcome = optimizer.run(verbose=arguments.verbose)
-    print(optimizer.report(outcome))
-    if arguments.json:
+    report = optimizer.report(outcome)
+    print(report)
+    if arguments.json or arguments.outputs:
         payload = {
             "objective": outcome.objective,
             "sense": outcome.sense,
@@ -108,9 +138,12 @@ def _optimize(arguments: argparse.Namespace) -> int:
                 for result in outcome.constraints
             ],
         }
-        arguments.json.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        print(f"Results written to {arguments.json}")
-    # A study that did not converge, or that ends on a violated requirement, is not a success,
+        if arguments.json:
+            arguments.json.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            print(f"Results written to {arguments.json}")
+        if arguments.outputs:
+            _write_artifacts(arguments, analysis, report, payload)
+    # A study that did not converge, or that ends on a violated constraint, is not a success,
     # and a shell that treats it as one will archive it as one.
     return 0 if outcome.succeeded else 1
 

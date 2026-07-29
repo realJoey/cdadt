@@ -15,6 +15,7 @@ is its ``set_values(prob, num_nodes)``, and ``continuation`` is the ladder insid
 
 from cdadt.aircraft import Aircraft, AircraftError
 from cdadt.analysis import SizingAnalysis
+from cdadt.artifacts import ArtifactError, MissionTrajectory, StudyArtifacts, Trace
 from cdadt.blackbox import BlackBoxError, OpenConceptSizingBox, SolverSettings, VariableInfo
 from cdadt.certification import CertificationBasis, Constraint, ConstraintError, ConstraintResult
 from cdadt.config import (
@@ -59,6 +60,7 @@ __all__ = [
     "Aerodynamics",
     "Aircraft",
     "AircraftError",
+    "ArtifactError",
     "BlackBoxConfig",
     "BlackBoxError",
     "Bounds",
@@ -77,6 +79,7 @@ __all__ = [
     "Geometry",
     "InitialConditions",
     "MissionError",
+    "MissionTrajectory",
     "ObjectiveSpec",
     "OpenConceptSizingBox",
     "OptimizationError",
@@ -95,6 +98,8 @@ __all__ = [
     "SolverSettings",
     "Stability",
     "Structures",
+    "StudyArtifacts",
+    "Trace",
     "VariableInfo",
     "VariableSpec",
     "Weights",
