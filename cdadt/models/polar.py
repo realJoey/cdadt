@@ -71,6 +71,17 @@ class PolarLoads(AerodynamicLoads):
         self._span_efficiency = float(span_efficiency)
         self._zero_lift_drag = np.atleast_1d(np.asarray(zero_lift_drag, dtype=float))
 
+    @classmethod
+    def build(cls, *, planform, span_efficiency, zero_lift_drag):
+        """Build from the span efficiency and zero-lift drag; the wing's shape is not used.
+
+        A parabolic polar sees the wing only through its aspect ratio, which reaches it via the
+        planform passed to :meth:`coefficients`. The shape -- sweep, taper, the sections -- makes
+        no difference to this model, and saying so here is more honest than accepting it and
+        quietly ignoring it.
+        """
+        return cls(span_efficiency=span_efficiency, zero_lift_drag=zero_lift_drag)
+
     @property
     def span_efficiency(self) -> float:
         """Oswald span efficiency."""

@@ -179,6 +179,29 @@ class AerodynamicLoads(ABC):
                 f"the aerodynamics that produced its numbers."
             )
 
+    @classmethod
+    @abstractmethod
+    def build(
+        cls,
+        *,
+        planform: Planform,
+        span_efficiency: float,
+        zero_lift_drag: object,
+    ) -> AerodynamicLoads:
+        """Construct this model from the black box's current values.
+
+        Every model is offered the same three things and takes what it needs -- a parabolic polar
+        wants the span efficiency and ignores the wing's shape; a vortex lattice wants the shape
+        and computes the efficiency itself. Declaring that choice explicitly is why this is
+        abstract rather than a shared constructor signature: what a model consumes is part of
+        what it *is*.
+
+        Called on every evaluation, with values as they currently stand, because the span
+        efficiency and the zero-lift drag are variables of the black box rather than
+        configuration. **Construction must therefore be cheap** -- anything expensive belongs
+        behind a cache keyed on what it depends on.
+        """
+
     @abstractmethod
     def coefficients(self, condition: FlightCondition, planform: Planform) -> AeroCoefficients:
         """Return the aerodynamic coefficients at every point of ``condition``.

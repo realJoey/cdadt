@@ -46,9 +46,19 @@ from cdadt.disciplines import AIRCRAFT_DISCIPLINES
 
 PACKAGE = Path(cdadt.__file__).resolve().parent
 
-#: Modules that may name OpenConcept at all. The black box loads it by string, so this is empty;
-#: the constant exists to make the intent explicit rather than implicit in an empty set.
-MODULES_ALLOWED_TO_IMPORT_OPENCONCEPT: frozenset[str] = frozenset()
+#: The one package that may name a dependency. Everything cdadt drives is loaded from a string in
+#: a case file, so for most of the package this stays impossible -- but installing cdadt's *own*
+#: aerodynamics into OpenConcept's mission means composing OpenConcept's blocks around it, and
+#: that has to happen somewhere. The brief allows exactly this and no more: *"The wrapper should
+#: be the only part of CDADT that directly imports OpenConcept."*
+#:
+#: Anything added here is a widening of the boundary and should be argued for, not appended to.
+ADAPTER_PACKAGE: str = "adapter"
+
+
+def _is_adapter(module: str) -> bool:
+    """Return whether a module is part of the one package allowed to import a dependency."""
+    return module == ADAPTER_PACKAGE or module.startswith(f"{ADAPTER_PACKAGE}.")
 
 
 def _cdadt_sources() -> list[Path]:
@@ -76,12 +86,19 @@ def _git(repository: Path, *arguments: str) -> str:
 
 
 @pytest.mark.contract
-def test_no_cdadt_module_imports_openconcept():
-    """The dependency is a string in a case file, not an import statement."""
+def test_no_cdadt_module_outside_the_adapter_imports_openconcept():
+    """The dependency is a string in a case file everywhere except the one wrapper package.
+
+    ``cdadt.adapter`` is exempt because it must be: an aircraft model is an OpenMDAO group that
+    OpenConcept instantiates, so installing cdadt's aerodynamics means composing OpenConcept's
+    propulsion and weight blocks around them. The exemption is one package wide and is what the
+    brief asks for. Every other module -- the disciplines, the config, the optimizer, the
+    physics in ``cdadt.models`` -- still cannot name the dependency at all.
+    """
     offenders = []
     for source in _cdadt_sources():
         module = source.relative_to(PACKAGE).with_suffix("").as_posix().replace("/", ".")
-        if module in MODULES_ALLOWED_TO_IMPORT_OPENCONCEPT:
+        if _is_adapter(module):
             continue
         tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
         for node in ast.walk(tree):
@@ -95,7 +112,38 @@ def test_no_cdadt_module_imports_openconcept():
                 if name == "openconcept" or name.startswith("openconcept."):
                     offenders.append(f"{source.relative_to(PACKAGE.parent)}:{node.lineno} imports {name}")
 
-    assert not offenders, "cdadt must not import OpenConcept:\n" + "\n".join(offenders)
+    assert not offenders, "cdadt must not import OpenConcept outside the adapter:\n" + "\n".join(offenders)
+
+
+@pytest.mark.contract
+def test_the_physics_cdadt_owns_depends_on_neither_dependency():
+    """``cdadt.models`` is the physics, and it must stay writable and testable without either.
+
+    This is the other half of the adapter exemption. Widening the boundary is only defensible if
+    it stays where it was widened: the moment a loads model imports OpenConcept or openavl, the
+    models stop being independently testable and "cdadt owns its aerodynamics" stops meaning
+    anything. Checked separately from the adapter rule so that relaxing one cannot quietly
+    relax the other.
+    """
+    forbidden = ("openconcept", "openavl")
+    offenders = []
+    for source in _cdadt_sources():
+        module = source.relative_to(PACKAGE).with_suffix("").as_posix().replace("/", ".")
+        if not (module == "models" or module.startswith("models.")):
+            continue
+        tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module or ""]
+            else:
+                continue
+            for name in names:
+                if any(name == root or name.startswith(f"{root}.") for root in forbidden):
+                    offenders.append(f"{source.relative_to(PACKAGE.parent)}:{node.lineno} imports {name}")
+
+    assert not offenders, "the physics cdadt owns must not import a dependency:\n" + "\n".join(offenders)
 
 
 @pytest.mark.contract
@@ -178,11 +226,48 @@ def test_no_locally_committed_openconcept_change_touches_a_module_cdadt_loads(bu
 #: would, not a lifted implementation.
 DISTINCTIVE_LINE = 25
 
-#: How many distinctive lines may be shared before it stops looking like coincidence. Measured:
-#: the two packages currently share six, every one of them either an OpenMDAO API call or a line
-#: quoted inside a cdadt docstring to say which reference function a module is the counterpart
-#: of. Citing the reference is the opposite of hiding a copy of it.
-MAX_SHARED_LINES = 12
+#: Longest run of *consecutive* cdadt lines that may also appear in OpenConcept.
+#:
+#: This measures runs rather than a total count, and the reason is worth stating because the
+#: first version of this guard counted totals and measured the wrong thing. Composing
+#: OpenConcept's components means writing OpenConcept's variable names --
+#: ``promotes_inputs=["throttle", "fltcond|h", ...]`` is not a copy, it is the interface, and
+#: there is no other way to spell it. Those matches are isolated and scattered.
+#:
+#: Copied source looks completely different: it arrives in unbroken stretches. Both ends are
+#: measured rather than guessed. Honest composition peaks at **4** -- and that is
+#: ``cdadt/mission.py`` deliberately quoting four consecutive lines of ``B738.py`` in its
+#: docstring to say which reference function it answers to. ``cdadt/adapter/aircraft.py``, which
+#: composes OpenConcept's components directly, reaches only **2**.
+#:
+#: Copying one real module gives 10 to 26, over six sampled across the library and the examples.
+#: Eight sits between the two with margin either way.
+MAX_SHARED_RUN = 8
+
+
+def _longest_shared_run(source: Path, theirs: set[str]) -> tuple[int, str]:
+    """Return the longest run of consecutive distinctive lines in ``source`` also in ``theirs``.
+
+    Blank lines and comments neither extend nor break a run: a copy with the comments stripped is
+    still a copy, and reformatting should not defeat the measurement.
+    """
+    longest, running, where = 0, 0, ""
+    for raw in source.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if _is_distinctive(line) and line in theirs:
+            running += 1
+            if running > longest:
+                longest, where = running, line
+        else:
+            running = 0
+    return longest, where
+
+
+def _is_distinctive(line: str) -> bool:
+    """Return whether a line is substantial enough that sharing it means anything."""
+    return len(line) >= DISTINCTIVE_LINE and not line.startswith(("#", '"', "'", "from ", "import ", "@"))
 
 
 def _distinctive_lines(root: Path) -> set[str]:
@@ -210,15 +295,22 @@ def test_cdadt_does_not_duplicate_openconcept_source():
     code instead, and neither of the other tests here would notice: a copy has no import to find
     and no base class to walk. Nor would a diff of the clone, since the clone is untouched.
 
-    Compared as sets of distinctive source lines. A lifted component would show up as a run of
-    dozens of them; what is actually shared is a handful of OpenMDAO API calls and lines quoted
-    in cdadt docstrings to name the reference each module answers to.
+    What is measured is the longest **consecutive** run, not a total. Isolated shared lines are
+    unavoidable and meaningless: :mod:`cdadt.adapter` composes OpenConcept's components, and
+    doing that means naming OpenConcept's variables exactly as OpenConcept spells them. A copy is
+    a different shape entirely -- an unbroken stretch of matching lines.
     """
-    shared = sorted(_distinctive_lines(PACKAGE) & _distinctive_lines(_openconcept_repository() / "openconcept"))
+    theirs = _distinctive_lines(_openconcept_repository() / "openconcept")
 
-    assert len(shared) <= MAX_SHARED_LINES, (
-        f"cdadt shares {len(shared)} distinctive source lines with OpenConcept, which looks "
-        f"like copied source rather than coincidence:\n  " + "\n  ".join(shared[:20])
+    offenders = []
+    for source in _cdadt_sources():
+        run, line = _longest_shared_run(source, theirs)
+        if run > MAX_SHARED_RUN:
+            offenders.append(f"  {source.relative_to(PACKAGE.parent)}: {run} consecutive lines, ending {line[:60]!r}")
+
+    assert not offenders, (
+        "cdadt appears to contain copied OpenConcept source -- a run of consecutive identical "
+        "lines is what a paste looks like:\n" + "\n".join(offenders)
     )
 
 
