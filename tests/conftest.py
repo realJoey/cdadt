@@ -100,3 +100,18 @@ def converged_analysis(sizing_config: Config) -> SizingAnalysis:
 def built_box(converged_analysis: SizingAnalysis):
     """The built and converged black box of the shipped case."""
     return converged_analysis.box
+
+
+@pytest.fixture(scope="session")
+def reference_problem(sizing_config: Config):
+    """Run OpenConcept's own B738 sizing example at the shipped grid, and return its problem.
+
+    Session-scoped because it is the most expensive fixture in the suite and two modules compare
+    against it: :mod:`tests.test_validation`, which checks cdadt driving OpenConcept's own group,
+    and :mod:`tests.test_adapter`, which checks cdadt driving its *own* group with its own
+    aerodynamics. Both must reproduce the same reference, and running it twice would double the
+    cost of the slowest thing here for no additional evidence.
+    """
+    from openconcept.examples.B738_sizing import run_738_sizing_analysis
+
+    return run_738_sizing_analysis(num_nodes=sizing_config.black_box.num_nodes)

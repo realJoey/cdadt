@@ -587,3 +587,29 @@ def test_a_variable_knows_its_own_name(sizing_config):
     """The name is the key it was declared under, and the report is written from it."""
     for name, spec in sizing_config.design_variables.items():
         assert spec.name == name
+
+
+@pytest.mark.unit
+def test_a_class_reference_reprs_as_the_string_it_was_written_as():
+    """It appears in tracebacks from a mistyped case file, so it must quote what was written."""
+    from cdadt.loader import ClassSpec
+
+    assert repr(ClassSpec("cdadt.models.polar:PolarLoads")) == "ClassSpec('cdadt.models.polar:PolarLoads')"
+
+
+@pytest.mark.unit
+def test_the_black_box_section_carries_options_through_to_the_analysis():
+    """How a case file configures the analysis it names, and how cdadt chooses its aerodynamics."""
+    config = Config.from_dict(_case(black_box={"model": "some.module:Class", "num_nodes": 11}))
+    assert config.black_box.options == {}
+
+    with_options = Config.from_dict(
+        _case(
+            black_box={
+                "model": "cdadt.adapter.analysis:SizingMissionAnalysis",
+                "num_nodes": 11,
+                "options": {"aerodynamic_loads": "cdadt.models.polar:PolarLoads"},
+            }
+        )
+    )
+    assert with_options.black_box.options == {"aerodynamic_loads": "cdadt.models.polar:PolarLoads"}

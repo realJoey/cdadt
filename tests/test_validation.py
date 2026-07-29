@@ -25,8 +25,6 @@ from __future__ import annotations
 
 import pytest
 
-from cdadt import SizingAnalysis
-
 #: cdadt result name -> (path in the reference problem, units to compare in). Every scalar the
 #: reference example prints appears here, plus the weights and geometry it computes.
 COMPARISONS: dict[str, tuple[str, str | None]] = {
@@ -57,14 +55,6 @@ COMPARISONS: dict[str, tuple[str, str | None]] = {
 #: The Newton solver's own convergence, not an engineering tolerance. The two runs solve the
 #: same equations in the same code; anything looser would hide a real difference.
 TOLERANCE = 1e-6
-
-
-@pytest.fixture(scope="module")
-def reference_problem(converged_analysis: SizingAnalysis):
-    """Run OpenConcept's own B738 sizing example at cdadt's grid and return its problem."""
-    from openconcept.examples.B738_sizing import run_738_sizing_analysis
-
-    return run_738_sizing_analysis(num_nodes=converged_analysis.box.num_nodes)
 
 
 @pytest.mark.validation

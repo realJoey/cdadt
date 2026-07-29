@@ -136,10 +136,22 @@ def test_an_unbuildable_wing_is_refused_rather_than_producing_a_lattice_of_nothi
         TrapezoidalPlanform(area=0.0, aspect_ratio=9.45)
     with pytest.raises(ValueError, match="positive aspect ratio"):
         TrapezoidalPlanform(area=124.6, aspect_ratio=-1.0)
-    with pytest.raises(ValueError, match=r"in \(0, 1\]"):
+    with pytest.raises(ValueError, match="must be positive"):
         TrapezoidalPlanform(area=124.6, aspect_ratio=9.45, taper=0.0)
     with pytest.raises(ValueError, match="positive chord"):
         WingSection(x=0.0, y=0.0, z=0.0, chord=0.0)
+
+
+@pytest.mark.unit
+def test_a_taper_above_one_is_allowed_because_a_derivative_has_to_cross_it():
+    """Inverse taper is unusual, not unbuildable -- and capping it broke finite differences.
+
+    A finite difference at ``taper = 1`` steps to 1.000001. An earlier version rejected that,
+    which made the class non-differentiable at exactly the bound an optimizer is most likely to
+    sit on. Bounds on a design variable belong in the case file's ``optimize`` band.
+    """
+    wing = TrapezoidalPlanform(area=124.6, aspect_ratio=9.45, taper=1.000001)
+    assert wing.tip_chord > wing.root_chord
 
 
 # =============================================================================================
@@ -276,3 +288,48 @@ def test_the_polar_reproduces_openconcepts_polar_drag_exactly():
     computed = loads.drag(condition, TrapezoidalPlanform(area=area, aspect_ratio=aspect))
 
     assert computed == pytest.approx(reference, rel=1e-12)
+
+
+# =============================================================================================
+# The parts a report reads
+# =============================================================================================
+
+
+@pytest.mark.unit
+def test_every_coefficient_and_condition_component_is_readable():
+    """The six components and the four conditions are the interface; all of them are read.
+
+    Not busywork: the lateral-directional four exist so a later trim or handling-qualities
+    constraint can be written against them, and an accessor nothing ever calls is an accessor
+    nobody has checked returns the right array.
+    """
+    coefficients = AeroCoefficients(CL=0.5, CD=0.02, CY=0.03, Cl=-0.01, Cm=-0.4, Cn=0.002)
+
+    assert coefficients.CY.tolist() == [0.03]
+    assert coefficients.Cl.tolist() == [-0.01]
+    assert coefficients.Cm.tolist() == [-0.4]
+    assert coefficients.Cn.tolist() == [0.002]
+
+    condition = FlightCondition(CL=0.5, mach=0.78, altitude=10668.0, dynamic_pressure=1.2e4)
+    assert condition.altitude.tolist() == [10668.0]
+    assert condition.dynamic_pressure.tolist() == [1.2e4]
+
+
+@pytest.mark.unit
+def test_the_polar_reports_what_it_was_built_from():
+    """A run record says which aerodynamics produced its numbers, and on what assumptions."""
+    loads = PolarLoads(span_efficiency=0.82, zero_lift_drag=0.019)
+
+    assert loads.span_efficiency == 0.82
+    assert loads.zero_lift_drag.tolist() == [0.019]
+    assert repr(loads) == "PolarLoads('parabolic_polar')"
+
+
+@pytest.mark.unit
+def test_the_geometry_objects_repr_as_the_wing_they_describe():
+    """These appear in tracebacks from a failed lattice solve, so they must name the wing."""
+    wing = TrapezoidalPlanform(area=124.6, aspect_ratio=9.45, sweep=25.0, taper=0.159)
+
+    assert repr(wing) == "TrapezoidalPlanform(area=124.6, aspect_ratio=9.45, sweep=25, taper=0.159)"
+    root, _tip = wing.sections()
+    assert repr(root) == f"WingSection(y={root.y:.3f}, chord={root.chord:.3f})"

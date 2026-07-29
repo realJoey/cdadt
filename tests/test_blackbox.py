@@ -274,3 +274,22 @@ def test_building_a_box_without_a_run_directory_writes_nothing(tmp_path, monkeyp
 
     assert box.run_directory is None
     assert not list(tmp_path.iterdir()), f"building scattered {[p.name for p in tmp_path.iterdir()]}"
+
+
+@pytest.mark.unit
+def test_the_box_reports_the_options_the_case_file_gave_it():
+    """A run record has to say how the analysis was configured, not only which one it was.
+
+    Empty for OpenConcept's own group, which declares nothing but the grid. cdadt's own analysis
+    group takes its aerodynamics this way, so this is what distinguishes two runs of the same
+    black box that computed different physics.
+    """
+    plain = OpenConceptSizingBox(MODEL, num_nodes=3)
+    assert plain.model_options == {}
+
+    configured = OpenConceptSizingBox(MODEL, num_nodes=3, options={"aerodynamic_loads": "some.module:Model"})
+    assert configured.model_options == {"aerodynamic_loads": "some.module:Model"}
+
+    # A copy, so a caller cannot reconfigure a built box by reaching through the accessor.
+    configured.model_options["aerodynamic_loads"] = "something.else:Model"
+    assert configured.model_options == {"aerodynamic_loads": "some.module:Model"}
