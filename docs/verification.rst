@@ -266,8 +266,9 @@ statement about what has actually been established:
      - 187
      - One cdadt class behaves as specified, with no model built
    * - ``contract``
-     - 14
-     - The cdadt/OpenConcept boundary and the ownership map hold
+     - 16
+     - The cdadt/OpenConcept boundary and the ownership map hold. Every mandatory rule about the
+       dependency has one: not imported, not subclassed, not modified, not copied, not patched
    * - ``integration``
      - 51
      - A real model builds, converges and is driven -- OpenConcept's, or for two of them a
@@ -279,8 +280,8 @@ statement about what has actually been established:
      - 19
      - The right equations were solved: against the reference example, and against physical reality
    * - **total**
-     - **310**
-     - ~9 minutes; ``-m "not slow"`` runs 250 of them in about two
+     - **312**
+     - ~9 minutes; ``-m "not slow"`` runs 252 of them in about two
 
 Coverage
 --------

@@ -1,6 +1,8 @@
 """Contract: the cdadt/OpenConcept boundary, and the ownership map that spans it.
 
-Four things are asserted here, each of which the rest of the project's claims depend on.
+Six things are asserted here, each of which the rest of the project's claims depend on. Together
+they are every mandatory rule the project's brief states about the dependency, made enforceable
+rather than merely true.
 
 **cdadt does not import OpenConcept.** Every module is parsed and its imports inspected. cdadt
 loads the sizing analysis by name at run time, from a string in the case file, so there is no
@@ -14,6 +16,15 @@ cdadt defines is walked, and its whole inheritance chain checked.
 **cdadt does not modify OpenConcept.** ``git status`` is run in the OpenConcept working tree.
 Separately, every commit the clone carries that upstream does not is examined, and the files it
 touches are compared against the modules cdadt actually loads.
+
+**cdadt does not copy OpenConcept.** The two rules above are both satisfied by a package that
+pasted the code instead: a copy has no import to find, no base class to walk, and leaves the
+clone spotless. Distinctive source lines are compared between the two packages.
+
+**cdadt does not patch OpenConcept.** Rebinding an attribute on an imported module changes a
+dependency's behaviour while leaving its source, this repository's imports, and every other
+check here honest -- and would quietly invalidate the validation test, since the reference run
+and the cdadt run would no longer be executing the same code.
 
 **Every input the box accepts has an owner.** The settable set is read off the built model and
 every name is routed. A variable cdadt could set that no discipline claims is a hole in the
@@ -155,6 +166,104 @@ def test_no_locally_committed_openconcept_change_touches_a_module_cdadt_loads(bu
         "The OpenConcept clone carries local commits touching modules cdadt loads, so its "
         "results are not those of the published library:\n  " + "\n  ".join(overlap)
     )
+
+
+# =============================================================================================
+# cdadt does not copy OpenConcept, and does not reach in and change it
+# =============================================================================================
+
+
+#: Shortest line worth comparing. Below this, a shared line is punctuation and API boilerplate --
+#: ``newton.linesearch = om.BoundsEnforceLS()`` is cdadt configuring OpenMDAO the way any caller
+#: would, not a lifted implementation.
+DISTINCTIVE_LINE = 25
+
+#: How many distinctive lines may be shared before it stops looking like coincidence. Measured:
+#: the two packages currently share six, every one of them either an OpenMDAO API call or a line
+#: quoted inside a cdadt docstring to say which reference function a module is the counterpart
+#: of. Citing the reference is the opposite of hiding a copy of it.
+MAX_SHARED_LINES = 12
+
+
+def _distinctive_lines(root: Path) -> set[str]:
+    """Return the source lines of ``root`` that are long enough to be worth comparing.
+
+    Comments, docstring delimiters, imports and decorators are dropped: they are shared between
+    any two Python projects and would drown the signal a real copy would produce.
+    """
+    found: set[str] = set()
+    for path in root.rglob("*.py"):
+        if "__pycache__" in str(path):
+            continue
+        for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw.strip()
+            if len(line) >= DISTINCTIVE_LINE and not line.startswith(("#", '"', "'", "from ", "import ", "@")):
+                found.add(line)
+    return found
+
+
+@pytest.mark.contract
+def test_cdadt_does_not_duplicate_openconcept_source():
+    """No component, correlation or model is copied across the boundary.
+
+    "Do not import it" and "do not subclass it" are both satisfied by a package that pasted the
+    code instead, and neither of the other tests here would notice: a copy has no import to find
+    and no base class to walk. Nor would a diff of the clone, since the clone is untouched.
+
+    Compared as sets of distinctive source lines. A lifted component would show up as a run of
+    dozens of them; what is actually shared is a handful of OpenMDAO API calls and lines quoted
+    in cdadt docstrings to name the reference each module answers to.
+    """
+    shared = sorted(_distinctive_lines(PACKAGE) & _distinctive_lines(_openconcept_repository() / "openconcept"))
+
+    assert len(shared) <= MAX_SHARED_LINES, (
+        f"cdadt shares {len(shared)} distinctive source lines with OpenConcept, which looks "
+        f"like copied source rather than coincidence:\n  " + "\n  ".join(shared[:20])
+    )
+
+
+@pytest.mark.contract
+def test_no_cdadt_module_rebinds_an_attribute_on_an_imported_module():
+    """cdadt never monkey-patches: not OpenConcept, and not anything else it depends on.
+
+    Patching changes a dependency's behaviour at run time while leaving both its source and this
+    repository's imports honest, so it is invisible to every other check here -- and it would
+    make the validation test meaningless, because the reference run and the cdadt run would no
+    longer be executing the same code.
+
+    Every assignment in the package is parsed. What is refused is a write *through* a name the
+    module did not define: ``some_module.attribute = ...`` and ``setattr(some_module, ...)``.
+    Writes to ``self`` and ``cls`` are how objects hold their own state and are not that.
+    """
+    offenders = []
+    for path in _cdadt_sources():
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        imported = {
+            alias.asname or alias.name.split(".")[0]
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Import, ast.ImportFrom))
+            for alias in node.names
+        }
+        for node in ast.walk(tree):
+            targets = node.targets if isinstance(node, ast.Assign) else []
+            for target in targets:
+                if (
+                    isinstance(target, ast.Attribute)
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id in imported
+                ):
+                    offenders.append(f"  {path.name}:{node.lineno}: {ast.unparse(target)} = ...")
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "setattr"
+                and node.args
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id in imported
+            ):
+                offenders.append(f"  {path.name}:{node.lineno}: setattr({ast.unparse(node.args[0])}, ...)")
+
+    assert not offenders, "cdadt must not patch a module it imports:\n" + "\n".join(offenders)
 
 
 # =============================================================================================

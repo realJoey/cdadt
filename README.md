@@ -18,8 +18,10 @@ cdadt inspect  cases/b738.yaml
 **OpenConcept is a black box.** No cdadt module imports OpenConcept at all. The sizing analysis
 is named in the case file as `module:ClassName` and loaded at run time, so there is no
 OpenConcept class cdadt can subclass, no component it can re-wire, and no physics it can quietly
-reimplement. A contract test parses every cdadt source file to prove it, another walks every
-class for an OpenConcept base, and a third checks the OpenConcept working tree is untouched.
+reimplement. Five contract tests hold that boundary — OpenConcept is not imported, not
+subclassed, not modified, not **copied**, and not **patched**. The last two matter because they
+are the ways of taking a dependency's behaviour that the first three would not notice: a copy has
+no import to find and leaves the clone spotless, and a patch leaves both sources untouched.
 
 **Every discipline is a class.** Geometry, aerodynamics, propulsion, stability, structures,
 weights and performance are classes with encapsulated state. Each owns exactly one slice of the
@@ -138,8 +140,8 @@ cdadt inspect cases/b738.yaml --what inputs       # what the box accepts
 # every run writes run_outputs/<case>_<stamp>_out/ with the report, the numbers,
 # the N2, three figures, OpenMDAO's own reports and the optimizer's log
 
-pytest -q -m "not slow"                           # the fast loop, 250 tests, ~2 min
-pytest -q                                         # 310 tests, ~9 min
+pytest -q -m "not slow"                           # the fast loop, 252 tests, ~2 min
+pytest -q                                         # 312 tests, ~9 min
 pytest -q --cov=cdadt                             # and 100% statement + branch coverage
 pytest -q -m verification                         # grid, derivatives, solver, reproducibility
 pytest -q -m validation                           # reference match + physical checks

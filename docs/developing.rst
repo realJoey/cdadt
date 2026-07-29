@@ -19,8 +19,8 @@ The loop
 
    conda activate cdadt_env
 
-   pytest -q -m "not slow"      # the fast loop: 250 tests, about two minutes
-   pytest -q                    # everything: 310 tests, about nine minutes
+   pytest -q -m "not slow"      # the fast loop: 252 tests, about two minutes
+   pytest -q                    # everything: 312 tests, about nine minutes
    pytest -q --cov=cdadt        # everything, with the coverage gate
    ruff check cdadt tests       # lint
    black cdadt tests            # format
@@ -41,7 +41,7 @@ What a change has to pass
    * - Gate
      - What it means
    * - ``pytest -q``
-     - All 310 pass. A test that is slow is marked ``slow``, not deleted.
+     - All 312 pass. A test that is slow is marked ``slow``, not deleted.
    * - ``pytest --cov=cdadt``
      - **100%** of statements and branches. ``fail_under = 100`` is in ``pyproject.toml``, so
        this fails the run rather than reporting a number. See :doc:`verification` for the two
@@ -108,6 +108,13 @@ contract test checks the working tree is clean and that any commit it carries be
 does not touch a module cdadt loads. If OpenConcept has a bug, the fix belongs in a cdadt
 wrapper, not in the clone.
 
+**Do not copy it, and do not patch it either.** Both are ways of getting a dependency's
+behaviour without importing, subclassing or editing it, so both would slip past the checks
+above -- a copy has no import to find and leaves the clone spotless; a patch leaves the source
+of both untouched. Each now has its own contract test, and the second matters most for
+:doc:`validation`: a patched dependency means the reference run and the cdadt run are no longer
+executing the same code, which is the one assumption that whole comparison rests on.
+
 **No cdadt module imports OpenConcept.** The analysis is named in the case file as
 ``module:ClassName`` and loaded at run time. A contract test parses every source file to enforce
 this. It is what makes "black box" a fact rather than a claim.
@@ -149,6 +156,14 @@ Every test carries exactly one marker, and the marker is a claim about what it e
 
 Add ``slow`` as well when a test builds and converges the real model, so the fast loop stays
 fast.
+
+**The suite runs from a temporary working directory.** A session-scoped fixture in
+``conftest.py`` moves it there, because a driver writes its own log -- pyOptSparse puts
+``IPOPT.out`` into the problem's output directory -- and OpenMDAO creates that directory on
+demand, named after the *problem*, wherever the process happens to be. ``reports=False`` does
+not prevent it; it suppresses the reports, not the directory a driver writes into. Every
+optimization test used to leave a ``__main__<n>_out`` folder in the repository root. Everything
+the suite reads is addressed absolutely, so nothing depends on where it runs from.
 
 Prefer a real object to a double. Where these tests use a fake -- ``FakeBox`` in
 ``test_artifacts.py`` and ``test_certification.py`` -- it is to keep the test about cdadt's own
