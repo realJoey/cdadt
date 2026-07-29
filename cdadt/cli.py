@@ -17,6 +17,16 @@ Three commands, all taking a case file:
 Each command can write its results to JSON with ``--json``, so a study is archivable without
 re-running it, and ``--outputs <dir>`` additionally leaves the model diagram, the flown
 trajectory and the printed report in one directory. See :mod:`cdadt.artifacts`.
+
+**The shape of this module.** Every command is a :class:`Command` subclass that declares its own
+name, its own arguments and what it does, and :class:`CommandLineInterface` composes whichever
+set it is given. A fourth command is therefore a fourth subclass and one entry in
+:data:`DEFAULT_COMMANDS`; no existing command, and no dispatch table, is touched. That is the
+same open/closed arrangement the disciplines use, and it is why there is no ``if command ==``
+anywhere here.
+
+Nothing in this module computes anything. A command reads a case file, hands it to the classes
+that do the work, and turns what comes back into text and an exit status.
 """
 
 from __future__ import annotations
@@ -24,8 +34,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any, ClassVar
 
 from cdadt import __version__
 from cdadt.analysis import SizingAnalysis
@@ -34,89 +46,146 @@ from cdadt.blackbox import OpenConceptSizingBox
 from cdadt.config import Config
 from cdadt.optimization import Optimizer
 
-__all__ = ["main"]
+__all__ = [
+    "DEFAULT_COMMANDS",
+    "Command",
+    "CommandLineInterface",
+    "InspectCommand",
+    "OptimizeCommand",
+    "SizeCommand",
+    "StudyCommand",
+    "main",
+]
 
 
-def _parser() -> argparse.ArgumentParser:
-    """Return the argument parser for the whole command line."""
-    parser = argparse.ArgumentParser(
-        prog="cdadt",
-        description="A certification-driven aircraft design tool. Drives an OpenConcept "
-        "full-mission sizing analysis as a black box.",
-    )
-    parser.add_argument("--version", action="version", version=f"cdadt {__version__}")
-    commands = parser.add_subparsers(dest="command", required=True)
+class Command(ABC):
+    """One subcommand of ``cdadt``.
 
-    outputs_help = "also write the N2 diagram, the trajectory plot and the report into this directory"
+    A subclass declares what it is called and what it does; the interface that composes it owns
+    the parser and the dispatch, so a command never needs to know it has siblings.
 
-    size = commands.add_parser("size", help="converge a case and report every response")
-    size.add_argument("case", type=Path, help="path to the case file")
-    size.add_argument("--json", type=Path, default=None, help="also write the results to this JSON file")
-    size.add_argument("--outputs", type=Path, default=None, help=outputs_help)
-    size.add_argument("-v", "--verbose", action="store_true", help="print each continuation step")
+    Attributes
+    ----------
+    name : str
+        The word typed after ``cdadt``.
+    help : str
+        One line, shown in ``cdadt --help``.
+    """
 
-    optimize = commands.add_parser("optimize", help="optimize a case against its certification basis")
-    optimize.add_argument("case", type=Path, help="path to the case file")
-    optimize.add_argument("--json", type=Path, default=None, help="also write the results to this JSON file")
-    optimize.add_argument("--outputs", type=Path, default=None, help=outputs_help)
-    optimize.add_argument("-v", "--verbose", action="store_true", help="print continuation and driver progress")
+    name: ClassVar[str]
+    help: ClassVar[str]
 
-    inspect = commands.add_parser("inspect", help="print the interface of the case's black box")
-    inspect.add_argument("case", type=Path, help="path to the case file")
-    inspect.add_argument(
-        "--what",
-        choices=("inputs", "outputs", "both"),
-        default="both",
-        help="which half of the interface to print (default: both)",
-    )
-    inspect.add_argument("--filter", default="", help="only show names containing this text")
+    def configure(self, parser: argparse.ArgumentParser) -> None:
+        """Declare this command's arguments on its own subparser.
 
-    return parser
+        The base declares the one argument every command takes -- the case file -- so a subclass
+        that needs nothing else does not override this at all.
+        """
+        parser.add_argument("case", type=Path, help="path to the case file")
+
+    @abstractmethod
+    def execute(self, arguments: argparse.Namespace) -> int:
+        """Run the command and return the process exit status."""
+
+    def __repr__(self) -> str:
+        """Return a representation naming the command."""
+        return f"{type(self).__name__}({self.name!r})"
 
 
-def _size(arguments: argparse.Namespace) -> int:
-    """Run a sizing case and print the results."""
-    analysis = SizingAnalysis(Config.from_yaml(arguments.case))
-    results = analysis.run(verbose=arguments.verbose)
-    report = results.report(analysis.catalog)
-    print(report)
-    if arguments.json:
-        arguments.json.write_text(json.dumps(results.to_dict(), indent=2), encoding="utf-8")
-        print(f"Results written to {arguments.json}")
-    if arguments.outputs:
-        _write_artifacts(arguments, analysis, report, results.to_dict())
-    return 0
+class StudyCommand(Command):
+    """A command that runs a study and can archive what it produced.
+
+    Both studies -- sizing and optimization -- take the same two archiving options and write the
+    same four files, so that behaviour lives here once. What differs is only what is run and what
+    the archived payload contains, which is what the subclasses supply.
+    """
+
+    OUTPUTS_HELP: ClassVar[str] = "also write the N2 diagram, the trajectory plot and the report into this directory"
+
+    verbose_help: ClassVar[str] = "print each continuation step"
+
+    def configure(self, parser: argparse.ArgumentParser) -> None:
+        """Declare the case file, the two archiving options and the verbosity flag."""
+        super().configure(parser)
+        parser.add_argument("--json", type=Path, default=None, help="also write the results to this JSON file")
+        parser.add_argument("--outputs", type=Path, default=None, help=self.OUTPUTS_HELP)
+        parser.add_argument("-v", "--verbose", action="store_true", help=self.verbose_help)
+
+    def archive(
+        self,
+        arguments: argparse.Namespace,
+        analysis: SizingAnalysis,
+        report: str,
+        payload: dict[str, Any],
+    ) -> None:
+        """Write whichever of the JSON file and the output directory were asked for."""
+        if arguments.json:
+            arguments.json.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+            print(f"Results written to {arguments.json}")
+        if arguments.outputs:
+            self._write_artifacts(arguments, analysis, report, payload)
+
+    @staticmethod
+    def _write_artifacts(
+        arguments: argparse.Namespace,
+        analysis: SizingAnalysis,
+        report: str,
+        payload: dict[str, Any],
+    ) -> None:
+        """Write the model diagram, the trajectory and the report, and say what was written."""
+        artifacts = StudyArtifacts(arguments.outputs)
+        artifacts.write_text(report, "report.txt")
+        artifacts.write_json(payload, "results.json")
+        artifacts.write_n2(analysis.box)
+        artifacts.write_trajectory(
+            analysis.box,
+            title=f"{arguments.case.stem} -- {analysis.box.model_spec}",
+            mission_path=analysis.config.mission_path,
+        )
+        for path in artifacts.written():
+            print(f"Wrote {path}")
 
 
-def _write_artifacts(
-    arguments: argparse.Namespace,
-    analysis: SizingAnalysis,
-    report: str,
-    payload: dict,
-) -> None:
-    """Write the model diagram, the trajectory and the report, and say what was written."""
-    artifacts = StudyArtifacts(arguments.outputs)
-    artifacts.write_text(report, "report.txt")
-    artifacts.write_json(payload, "results.json")
-    artifacts.write_n2(analysis.box)
-    artifacts.write_trajectory(
-        analysis.box,
-        title=f"{arguments.case.stem} -- {analysis.box.model_spec}",
-        mission_path=analysis.config.mission_path,
-    )
-    for path in artifacts.written():
-        print(f"Wrote {path}")
+class SizeCommand(StudyCommand):
+    """Converge a case and print every response."""
+
+    name: ClassVar[str] = "size"
+    help: ClassVar[str] = "converge a case and report every response"
+
+    def execute(self, arguments: argparse.Namespace) -> int:
+        """Run a sizing case and print the results."""
+        analysis = SizingAnalysis(Config.from_yaml(arguments.case))
+        results = analysis.run(verbose=arguments.verbose)
+        report = results.report(analysis.catalog)
+        print(report)
+        self.archive(arguments, analysis, report, results.to_dict())
+        return 0
 
 
-def _optimize(arguments: argparse.Namespace) -> int:
-    """Run an optimization case and print the comparison and traceability matrix."""
-    analysis = SizingAnalysis(Config.from_yaml(arguments.case))
-    optimizer = Optimizer(analysis)
-    outcome = optimizer.run(verbose=arguments.verbose)
-    report = optimizer.report(outcome)
-    print(report)
-    if arguments.json or arguments.outputs:
-        payload = {
+class OptimizeCommand(StudyCommand):
+    """Optimize a case against its certification basis."""
+
+    name: ClassVar[str] = "optimize"
+    help: ClassVar[str] = "optimize a case against its certification basis"
+    verbose_help: ClassVar[str] = "print continuation and driver progress"
+
+    def execute(self, arguments: argparse.Namespace) -> int:
+        """Run an optimization case and print the comparison and traceability matrix."""
+        analysis = SizingAnalysis(Config.from_yaml(arguments.case))
+        optimizer = Optimizer(analysis)
+        outcome = optimizer.run(verbose=arguments.verbose)
+        report = optimizer.report(outcome)
+        print(report)
+        if arguments.json or arguments.outputs:
+            self.archive(arguments, analysis, report, self._payload(outcome))
+        # A study that did not converge, or that ends on a violated constraint, is not a success,
+        # and a shell that treats it as one will archive it as one.
+        return 0 if outcome.succeeded else 1
+
+    @staticmethod
+    def _payload(outcome: Any) -> dict[str, Any]:
+        """Return the full record of an optimization: both designs and every constraint."""
+        return {
             "objective": outcome.objective,
             "sense": outcome.sense,
             "succeeded": outcome.succeeded,
@@ -138,45 +207,122 @@ def _optimize(arguments: argparse.Namespace) -> int:
                 for result in outcome.constraints
             ],
         }
-        if arguments.json:
-            arguments.json.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-            print(f"Results written to {arguments.json}")
-        if arguments.outputs:
-            _write_artifacts(arguments, analysis, report, payload)
-    # A study that did not converge, or that ends on a violated constraint, is not a success,
-    # and a shell that treats it as one will archive it as one.
-    return 0 if outcome.succeeded else 1
 
 
-def _inspect(arguments: argparse.Namespace) -> int:
-    """Print what the case's black box accepts and publishes."""
-    config = Config.from_yaml(arguments.case)
-    box = OpenConceptSizingBox.describe(config.black_box.model)
+class InspectCommand(Command):
+    """Print the interface of a case's black box without running it."""
 
-    print(f"Black box : {config.black_box.model}")
-    print(f"Case      : {arguments.case}")
-    print()
+    name: ClassVar[str] = "inspect"
+    help: ClassVar[str] = "print the interface of the case's black box"
 
-    if arguments.what in ("inputs", "both"):
-        settable = {n: v for n, v in box.settable().items() if arguments.filter in n}
-        print(f"Inputs the box accepts ({len(settable)} of {len(box.settable())} shown)")
-        print("-" * 72)
-        for name, info in settable.items():
-            print(f"  {name:<52s} {info.units or '-'!s:<10s} {info.shape}")
+    HALVES: ClassVar[tuple[str, ...]] = ("inputs", "outputs", "both")
+
+    def configure(self, parser: argparse.ArgumentParser) -> None:
+        """Declare the case file and which half of the interface to print."""
+        super().configure(parser)
+        parser.add_argument(
+            "--what",
+            choices=self.HALVES,
+            default="both",
+            help="which half of the interface to print (default: both)",
+        )
+        parser.add_argument("--filter", default="", help="only show names containing this text")
+
+    def execute(self, arguments: argparse.Namespace) -> int:
+        """Print what the case's black box accepts and publishes."""
+        config = Config.from_yaml(arguments.case)
+        box = OpenConceptSizingBox.describe(config.black_box.model)
+
+        print(f"Black box : {config.black_box.model}")
+        print(f"Case      : {arguments.case}")
         print()
 
-    if arguments.what in ("outputs", "both"):
-        readable = {n: v for n, v in box.readable().items() if arguments.filter in n}
-        print(f"Outputs the box publishes ({len(readable)} of {len(box.readable())} shown)")
+        if arguments.what in ("inputs", "both"):
+            self._print_half("Inputs the box accepts", box.settable(), arguments.filter)
+            print()
+
+        if arguments.what in ("outputs", "both"):
+            self._print_half("Outputs the box publishes", box.readable(), arguments.filter)
+
+        return 0
+
+    @staticmethod
+    def _print_half(title: str, variables: dict[str, Any], text: str) -> None:
+        """Print one half of the interface, saying how much of it the filter kept."""
+        shown = {name: info for name, info in variables.items() if text in name}
+        print(f"{title} ({len(shown)} of {len(variables)} shown)")
         print("-" * 72)
-        for name, info in readable.items():
+        for name, info in shown.items():
             print(f"  {name:<52s} {info.units or '-'!s:<10s} {info.shape}")
 
-    return 0
+
+#: The commands ``cdadt`` offers. A new one is a new class and one entry here.
+DEFAULT_COMMANDS: tuple[type[Command], ...] = (SizeCommand, OptimizeCommand, InspectCommand)
+
+
+class CommandLineInterface:
+    """The ``cdadt`` command line: a parser, a set of commands, and the dispatch between them.
+
+    Parameters
+    ----------
+    commands : sequence of type, optional
+        Command classes to offer. Default :data:`DEFAULT_COMMANDS`. Passing a different set is
+        how a study adds a command, and is what lets the dispatch be tested without running one.
+
+    Raises
+    ------
+    ValueError
+        If two commands claim the same name, which would otherwise mean one silently shadowed
+        the other.
+
+    Examples
+    --------
+    >>> CommandLineInterface().run(["--version"])
+    Traceback (most recent call last):
+    SystemExit: 0
+    """
+
+    def __init__(self, commands: Sequence[type[Command]] = DEFAULT_COMMANDS) -> None:
+        self._commands: dict[str, Command] = {}
+        for command_class in commands:
+            command = command_class()
+            if command.name in self._commands:
+                raise ValueError(f"Two commands are both called '{command.name}'.")
+            self._commands[command.name] = command
+
+    @property
+    def commands(self) -> dict[str, Command]:
+        """The commands offered, by name."""
+        return dict(self._commands)
+
+    def parser(self) -> argparse.ArgumentParser:
+        """Return the parser for the whole command line, with every command configured on it."""
+        parser = argparse.ArgumentParser(
+            prog="cdadt",
+            description="A certification-driven aircraft design tool. Drives an OpenConcept "
+            "full-mission sizing analysis as a black box.",
+        )
+        parser.add_argument("--version", action="version", version=f"cdadt {__version__}")
+        subparsers = parser.add_subparsers(dest="command", required=True)
+        for command in self._commands.values():
+            command.configure(subparsers.add_parser(command.name, help=command.help))
+        return parser
+
+    def run(self, argv: Sequence[str] | None = None) -> int:
+        """Parse ``argv`` and run the command it names, returning the exit status."""
+        arguments = self.parser().parse_args(argv)
+        return self._commands[arguments.command].execute(arguments)
+
+    def __repr__(self) -> str:
+        """Return a representation naming the commands offered."""
+        return f"CommandLineInterface({sorted(self._commands)})"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the command line.
+
+    The console-script entry point, and nothing more: the work is
+    :class:`CommandLineInterface`, which is what a test or another tool should use.
 
     Parameters
     ----------
@@ -189,9 +335,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         Process exit status. Non-zero when an optimization did not succeed, or when the case
         could not be run at all.
     """
-    arguments = _parser().parse_args(argv)
-    commands = {"size": _size, "optimize": _optimize, "inspect": _inspect}
-    return commands[arguments.command](arguments)
+    return CommandLineInterface().run(argv)
 
 
 if __name__ == "__main__":  # pragma: no cover

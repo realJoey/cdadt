@@ -6,7 +6,15 @@ import json
 
 import pytest
 
-from cdadt.cli import main
+from cdadt.cli import (
+    DEFAULT_COMMANDS,
+    Command,
+    CommandLineInterface,
+    InspectCommand,
+    OptimizeCommand,
+    SizeCommand,
+    main,
+)
 from tests.conftest import CASES
 
 
@@ -15,6 +23,81 @@ def test_the_command_line_refuses_an_unknown_command():
     """argparse exits rather than guessing."""
     with pytest.raises(SystemExit):
         main(["fly", str(CASES / "b738.yaml")])
+
+
+# =============================================================================================
+# The command hierarchy
+# =============================================================================================
+
+
+@pytest.mark.unit
+def test_a_command_must_say_what_it_does():
+    """``execute`` is abstract, so a half-written command fails at construction, not at run time."""
+    with pytest.raises(TypeError, match="abstract"):
+        Command()
+
+
+@pytest.mark.unit
+def test_a_new_command_needs_no_change_to_any_existing_one():
+    """The open/closed claim, tested rather than asserted in a docstring.
+
+    A command set is composed, not hard-coded, so this adds one without touching ``SizeCommand``,
+    ``OptimizeCommand``, ``InspectCommand`` or the dispatch.
+    """
+
+    class CountCommand(Command):
+        """A command that exists only in this test."""
+
+        name = "count"
+        help = "count the design variables"
+
+        def execute(self, arguments) -> int:
+            """Print how many design variables the case declares."""
+            from cdadt import Config
+
+            print(f"{len(Config.from_yaml(arguments.case).design_variables)} design variables")
+            return 0
+
+    interface = CommandLineInterface([*DEFAULT_COMMANDS, CountCommand])
+
+    assert sorted(interface.commands) == ["count", "inspect", "optimize", "size"]
+    assert interface.run(["count", str(CASES / "b738.yaml")]) == 0
+
+
+@pytest.mark.unit
+def test_two_commands_with_the_same_name_are_refused():
+    """One would silently shadow the other, and which one would depend on ordering."""
+
+    class Duplicate(SizeCommand):
+        """Claims a name that is already taken."""
+
+    with pytest.raises(ValueError, match="Two commands are both called 'size'"):
+        CommandLineInterface([SizeCommand, Duplicate])
+
+
+@pytest.mark.unit
+def test_the_commands_offered_cannot_be_changed_through_the_accessor():
+    """The mapping handed out is a copy, or a caller could remove a command from a live parser."""
+    interface = CommandLineInterface()
+    interface.commands.clear()
+
+    assert sorted(interface.commands) == ["inspect", "optimize", "size"]
+
+
+@pytest.mark.unit
+def test_the_commands_and_the_interface_repr_as_what_they_are():
+    """These appear in tracebacks from a failed study, so they have to name themselves."""
+    assert repr(SizeCommand()) == "SizeCommand('size')"
+    assert repr(OptimizeCommand()) == "OptimizeCommand('optimize')"
+    assert repr(InspectCommand()) == "InspectCommand('inspect')"
+    assert repr(CommandLineInterface()) == "CommandLineInterface(['inspect', 'optimize', 'size'])"
+
+
+@pytest.mark.unit
+def test_each_study_command_describes_its_own_verbosity():
+    """Sizing prints continuation steps; optimizing also prints driver progress."""
+    assert "continuation step" in SizeCommand.verbose_help
+    assert "driver progress" in OptimizeCommand.verbose_help
 
 
 @pytest.mark.integration
