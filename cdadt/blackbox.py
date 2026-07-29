@@ -40,13 +40,14 @@ constants, and live in the case file.
 from __future__ import annotations
 
 import difflib
-import importlib
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import openmdao.api as om
+
+from cdadt.loader import ClassSpec
 
 __all__ = ["BlackBoxError", "OpenConceptSizingBox", "RunDirectory", "SolverSettings", "VariableInfo"]
 
@@ -334,20 +335,7 @@ class OpenConceptSizingBox:
             or the attribute is not a class. Each failure names what was tried, because a
             mistyped model in a case file is otherwise an import traceback with no context.
         """
-        if spec.count(":") != 1:
-            raise BlackBoxError(f"The black-box model must be given as 'module.path:ClassName'; got {spec!r}.")
-        module_name, class_name = spec.split(":")
-        try:
-            module = importlib.import_module(module_name)
-        except ImportError as error:
-            raise BlackBoxError(f"Cannot import the module '{module_name}' named by the black-box model.") from error
-        try:
-            candidate = getattr(module, class_name)
-        except AttributeError as error:
-            raise BlackBoxError(f"'{module_name}' has no attribute '{class_name}'.") from error
-        if not isinstance(candidate, type):
-            raise BlackBoxError(f"'{spec}' names a {type(candidate).__name__}, not a class.")
-        return candidate
+        return ClassSpec(spec, describes="black-box model").resolve(BlackBoxError)
 
     @classmethod
     def describe(cls, model: str, num_nodes: int = 3) -> OpenConceptSizingBox:
