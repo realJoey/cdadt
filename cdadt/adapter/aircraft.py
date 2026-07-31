@@ -143,10 +143,14 @@ class CdadtAircraftModel(om.Group):
         install the dependency's component rather than to write one: cdadt supplies the sections from
         its planform and adds the result to the parasite drag.
 
-        On the shipped wing this contributes nothing below about M 0.7, 5.0e-5 at the M 0.785 cruise
-        -- some 0.2% of the total -- and 8.8e-4 at the M 0.82 maximum, where it is 3%. Small at
-        cruise and not small at the edge of the envelope, which is the shape a drag-rise model should
-        have and is the reason its absence mattered most where a study would push hardest.
+        On the shipped wing, at the thickness the case file declares, this contributes nothing below
+        about M 0.70, **6.1e-4 at the M 0.7854 cruise -- 2.2% of the total drag** -- and 3.6e-3 at
+        the M 0.82 the case declares as Mach_max, where it is 11.6%.
+
+        Those numbers were first written an order of magnitude too small, because the probe behind
+        them used a thickness ratio of 0.10 while the case file declares 0.12. A drag-rise model is
+        exponential in the wrong direction to guess at: the same wing two thickness counts thinner
+        looks like a rounding error at cruise, and the real one does not.
         """
         from openconcept.aerodynamics.openaerostruct import WaveDragFromSections
 
