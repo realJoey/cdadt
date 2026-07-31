@@ -9,16 +9,21 @@ dist/
 htmlcov/
 coverage.xml
 docs/_build/
-reports/
+.ruff_cache/
 # *.sql
 # *.db
 # n2.html
 # coloring_files/
 # run_outputs/
-*_out/
 # IPOPT.out
 # SLSQP.out
-.ruff_cache/
+
+# OpenMDAO litter, but ONLY where it lands by accident. A pattern with no leading slash matches at
+# every depth, so a bare `reports/` and `*_out/` also swallowed run_outputs/<case>_<stamp>_out/ and
+# the reports/ inside each one -- which is the very output that is meant to be committed. Anchored
+# to the repository root, these still catch a stray run started from the wrong directory.
+/reports/
+/*_out/
 
 # pyXDSM build output. The .tex, .tikz and .png are committed -- the PNG is what GitHub and the
 # docs display, so it has to be in the repository. The PDF and the LaTeX litter are not: the PDF

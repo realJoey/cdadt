@@ -1,0 +1,77 @@
+Black box : openconcept.examples.B738_sizing:B738SizingMissionAnalysis
+Grid      : 21 nodes per phase
+
+geometry
+--------
+  wing_MAC                               4.2684  m
+  fuselage_wetted_area                 449.8157  m**2
+  nacelle_wetted_area                   27.0177  m**2
+  tail_lever_arm                        19.0400  m
+
+aerodynamics
+------------
+  CLmax_cruise                           1.4274  -
+  CLmax_takeoff                          2.2673  -
+
+propulsion
+----------
+  engine_weight                       2226.7262  kg
+  engines_weight                      4453.4524  kg
+  thrust_reverser_weight               832.7956  kg
+  engine_controls_weight                38.7571  kg
+  engine_starter_weight                 47.0410  kg
+  fuel_system_weight                   289.4704  kg
+
+stability
+---------
+  hstab_area                            27.9332  m**2
+  vstab_area                            20.2101  m**2
+
+structures
+----------
+  structure_weight                   21473.2256  kg
+  wing_weight                         5608.4057  kg
+  hstab_weight                         609.8719  kg
+  vstab_weight                         600.9402  kg
+  fuselage_weight                     6624.3529  kg
+  main_gear_weight                    2463.1191  kg
+  nose_gear_weight                     395.5556  kg
+  nacelle_weight                      1592.1092  kg
+
+weights
+-------
+  MTOW                               78345.6435  kg
+  OEW                                41748.3258  kg
+  MLW                                62676.5148  kg
+  payload                            18000.0000  kg
+  furnishings_weight                  4080.0620  kg
+  avionics_weight                      487.9988  kg
+  electrical_weight                    692.8804  kg
+  apu_weight                           665.9380  kg
+  oxygen_weight                        128.6376  kg
+  environmental_weight                2032.2121  kg
+  flight_controls_weight              1080.4210  kg
+  pressurized_volume                   317.1201  m**3
+
+performance
+-----------
+  block_fuel                         15977.0628  kg
+  total_fuel                         18597.3177  kg
+  takeoff_field_length                5247.7948  ft
+  abort_distance                      5247.7948  ft
+  V1                                   135.0566  kn
+  V2                                   155.4331  kn
+  engine_out_climb_gradient              0.0579  rad
+  mission_range_flown                 2800.0000  nmi
+  reserve_range_flown                  200.0000  nmi
+  climb_throttle                0.6029 to 0.9421  (21 nodes)  -
+  cruise_throttle               0.6829 to 0.7931  (21 nodes)  -
+  descent_throttle              0.0538 to 0.3532  (21 nodes)  -
+  climb_duration                        25.9000  min
+  cruise_duration                      326.7719  min
+  descent_duration                      33.3333  min
+  loiter_duration                       30.0000  min
+
+Not published by this black box
+-------------------------------
+  geometry: wing_span

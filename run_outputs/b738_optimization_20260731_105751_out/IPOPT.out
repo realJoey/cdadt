@@ -1,0 +1,102 @@
+
+List of user-set options:
+
+                                    Name   Value                used
+                        file_print_level = 5                     yes
+                   hessian_approximation = limited-memory        yes
+                           linear_solver = mumps                 yes
+                                max_iter = 40                    yes
+                             mu_strategy = adaptive              yes
+                      nlp_scaling_method = gradient-based        yes
+                             output_file = run_outputs\b738_optimization_20260731_105751_out/IPOPT.out  yes
+                             print_level = 0                     yes
+                      print_user_options = yes                   yes
+                                      sb = yes                   yes
+                                     tol = 1e-06                 yes
+This is Ipopt version 3.14.19, running with linear solver MUMPS 5.8.2.
+
+Number of nonzeros in equality constraint Jacobian...:        0
+Number of nonzeros in inequality constraint Jacobian.:      120
+Number of nonzeros in Lagrangian Hessian.............:        0
+
+Total number of variables............................:        5
+                     variables with only lower bounds:        0
+                variables with lower and upper bounds:        5
+                     variables with only upper bounds:        0
+Total number of equality constraints.................:        0
+Total number of inequality constraints...............:       24
+        inequality constraints with only lower bounds:        1
+   inequality constraints with lower and upper bounds:       22
+        inequality constraints with only upper bounds:        1
+
+iter    objective    inf_pr   inf_du lg(mu)  ||d||  lg(rg) alpha_du alpha_pr  ls
+   0  9.2984134e-01 0.00e+00 9.03e-01   0.0 0.00e+00    -  0.00e+00 0.00e+00   0
+   1  9.1265705e-01 0.00e+00 7.56e-02  -1.6 1.21e-01    -  9.29e-01 1.00e+00f  1
+   2  8.6779727e-01 0.00e+00 4.75e-02  -2.3 2.15e-01    -  1.00e+00 1.00e+00h  1
+   3  8.3395513e-01 0.00e+00 2.97e-02  -3.1 3.33e-01    -  9.90e-01 1.00e+00h  1
+   4  8.2454882e-01 0.00e+00 2.52e-02  -3.8 3.13e-01    -  1.00e+00 1.00e+00h  1
+Warning: Cutting back alpha due to evaluation error
+   5  8.2306478e-01 0.00e+00 2.17e-02  -4.0 7.90e-02    -  1.00e+00 4.99e-01h  2
+   6  8.2197180e-01 0.00e+00 1.57e-02  -3.2 2.55e-01    -  1.00e+00 4.51e-01h  1
+Warning: Cutting back alpha due to evaluation error
+   7  8.2110625e-01 0.00e+00 1.09e-02  -4.2 9.02e-02    -  1.00e+00 5.00e-01h  2
+Warning: Cutting back alpha due to evaluation error
+   8  8.2062687e-01 0.00e+00 5.55e-03  -4.2 4.33e-02    -  1.00e+00 4.98e-01h  2
+Warning: Cutting back alpha due to evaluation error
+   9  8.2037558e-01 0.00e+00 4.13e-03  -4.5 2.17e-02    -  1.00e+00 4.97e-01h  2
+Warning: Cutting back alpha due to evaluation error
+iter    objective    inf_pr   inf_du lg(mu)  ||d||  lg(rg) alpha_du alpha_pr  ls
+  10  8.2022947e-01 0.00e+00 5.06e-03  -4.8 1.08e-02    -  1.00e+00 4.97e-01h  2
+Warning: Cutting back alpha due to evaluation error
+  11  8.2014472e-01 0.00e+00 5.48e-03  -5.1 5.37e-03    -  1.00e+00 4.96e-01h  2
+Warning: Cutting back alpha due to evaluation error
+  12  8.2009632e-01 0.00e+00 5.98e-03  -5.4 2.96e-03    -  1.00e+00 4.96e-01h  2
+Warning: Cutting back alpha due to evaluation error
+  13  8.2006791e-01 0.00e+00 6.69e-03  -5.6 4.89e-03    -  1.00e+00 4.93e-01h  2
+Warning: Cutting back alpha due to evaluation error
+  14  8.2004649e-01 0.00e+00 6.70e-03  -6.0 1.72e-02    -  1.00e+00 4.93e-01h  2
+Warning: Cutting back alpha due to evaluation error
+  15  8.1999872e-01 0.00e+00 5.40e-03  -6.4 1.58e-01    -  1.00e+00 4.96e-01h  2
+Warning: Cutting back alpha due to evaluation error
+  16  8.1998549e-01 0.00e+00 2.97e-03  -7.4 7.42e-02    -  1.00e+00 5.00e-01h  2
+Warning: Cutting back alpha due to evaluation error
+  17  8.1998171e-01 0.00e+00 1.58e-03  -8.1 2.90e-02    -  1.00e+00 5.00e-01h  2
+Warning: Cutting back alpha due to evaluation error
+  18  8.1998025e-01 0.00e+00 8.11e-04  -8.8 1.33e-02    -  1.00e+00 5.00e-01h  2
+Warning: Cutting back alpha due to evaluation error
+  19  8.1997961e-01 0.00e+00 4.09e-04  -9.5 6.44e-03    -  1.00e+00 5.00e-01h  2
+Warning: Cutting back alpha due to evaluation error
+iter    objective    inf_pr   inf_du lg(mu)  ||d||  lg(rg) alpha_du alpha_pr  ls
+  20  8.1997931e-01 0.00e+00 2.05e-04 -10.0 3.17e-03    -  1.00e+00 5.00e-01h  2
+Warning: Cutting back alpha due to evaluation error
+  21  8.1997917e-01 0.00e+00 1.03e-04 -10.2 1.57e-03    -  1.00e+00 5.00e-01h  2
+Warning: Cutting back alpha due to evaluation error
+  22  8.1997910e-01 0.00e+00 5.14e-05 -11.0 7.81e-04    -  1.00e+00 5.00e-01h  2
+Warning: Cutting back alpha due to evaluation error
+  23  8.1997906e-01 0.00e+00 2.57e-05 -11.0 3.89e-04    -  1.00e+00 5.00e-01h  2
+Warning: Cutting back alpha due to evaluation error
+  24  8.1997905e-01 0.00e+00 1.28e-05 -11.0 1.94e-04    -  1.00e+00 5.00e-01h  2
+Warning: Cutting back alpha due to evaluation error
+  25  8.1997904e-01 0.00e+00 2.58e-07 -11.0 9.72e-05    -  1.00e+00 5.00e-01h  2
+
+Number of Iterations....: 25
+
+                                   (scaled)                 (unscaled)
+Objective...............:   8.1997903763170565e-01    8.1997903763170565e-01
+Dual infeasibility......:   2.5833775252258811e-07    2.5833775252258811e-07
+Constraint violation....:   0.0000000000000000e+00    0.0000000000000000e+00
+Variable bound violation:   4.8132098307007709e-10    4.8132098307007709e-10
+Complementarity.........:   2.9496549830740496e-09    2.9496549830740496e-09
+Overall NLP error.......:   2.5833775252258811e-07    2.5833775252258811e-07
+
+
+Number of objective function evaluations             = 26
+Number of objective gradient evaluations             = 26
+Number of equality constraint evaluations            = 0
+Number of inequality constraint evaluations          = 46
+Number of equality constraint Jacobian evaluations   = 0
+Number of inequality constraint Jacobian evaluations = 26
+Number of Lagrangian Hessian evaluations             = 0
+Total seconds in IPOPT                               = 101.673
+
+EXIT: Optimal Solution Found.

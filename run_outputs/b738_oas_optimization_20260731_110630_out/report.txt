@@ -1,0 +1,84 @@
+Objective : minimize total_fuel  (mission.loiter.fuel_burn_integ.fuel_burn_final)
+Driver    : IPOPT, 5 design variables, 5 constraints
+
+Design variables
+----------------
+variable                               baseline        optimum        lower        upper  units
+ac|propulsion|engine|rating          27000.0000     19677.1150   18000.0000   34000.0000  lbf
+ac|geom|wing|S_ref                     124.6000       105.0000     105.0000     180.0000  m**2
+ac|geom|wing|AR                          9.4500        12.0000       7.0000      12.0000  -
+ac|geom|wing|c4sweep                    25.0000        31.5599      15.0000      32.0000  deg
+ac|geom|wing|taper                       0.1590         0.2358       0.1200       0.3500  -
+
+Results
+-------
+quantity                             baseline          optimum     change
+wing_MAC                               4.2684           3.3351    -21.87%
+fuselage_wetted_area                 449.8157         449.8157     +0.00%
+nacelle_wetted_area                   27.0177          27.0177     +0.00%
+wing_span                             34.3143          35.4965     +3.45%
+CLmax_cruise                           1.4274           1.3420     -5.98%
+CLmax_takeoff                          2.2673           2.1211     -6.45%
+engine_weight                       2226.7262        1622.7980    -27.12%
+engines_weight                      4453.4524        3245.5961    -27.12%
+thrust_reverser_weight               832.7956         606.9265    -27.12%
+engine_controls_weight                38.7571          33.0864    -14.63%
+engine_starter_weight                 47.0410          33.4470    -28.90%
+fuel_system_weight                   276.5408         256.1969     -7.36%
+hstab_area                            27.9332          18.3920    -34.16%
+vstab_area                            20.2101          17.6177    -12.83%
+structure_weight                   21208.5932       20083.4439     -5.31%
+wing_weight                         5536.6145        5645.5359     +1.97%
+hstab_weight                         600.9244         416.5972    -30.67%
+vstab_weight                         593.2615         532.2934    -10.28%
+fuselage_weight                     6548.1843        6344.9749     -3.10%
+main_gear_weight                    2413.0445        2264.4230     -6.16%
+nose_gear_weight                     389.6892         372.0783     -4.52%
+nacelle_weight                      1592.1092        1160.3006    -27.12%
+MTOW                               76554.3233       71265.5891     -6.91%
+OEW                                41365.9469       38198.8697     -7.66%
+MLW                                61243.4587       57012.4713     -6.91%
+payload                            18000.0000       18000.0000     +0.00%
+furnishings_weight                  4078.6809        4074.6033     -0.10%
+avionics_weight                      477.0484         444.7184     -6.78%
+electrical_weight                    682.0288         657.4752     -3.60%
+apu_weight                           650.7117         605.7575     -6.91%
+oxygen_weight                        128.6376         128.6376     +0.00%
+environmental_weight                2032.2121        2032.2121     +0.00%
+flight_controls_weight              1063.8889        1014.3077     -4.66%
+pressurized_volume                   317.1201         317.1201     +0.00%
+block_fuel                         14707.6544       12966.8259    -11.84%
+total_fuel                         17188.3765       15066.7194    -12.34%
+takeoff_field_length                4945.2949        7477.7619    +51.21%
+abort_distance                      4945.2949        7477.7619    +51.21%
+V1                                   132.2983         147.3527    +11.38%
+V2                                   153.6459         166.9610     +8.67%
+engine_out_climb_gradient              0.0763           0.0563    -26.29%
+mission_range_flown                 2800.0000        2800.0000     +0.00%
+reserve_range_flown                  200.0000         200.0000     +0.00%
+climb_duration                        25.9000          25.9000     +0.00%
+cruise_duration                      326.7783         326.7230     -0.02%
+descent_duration                      33.3333          33.3333     +0.00%
+loiter_duration                       30.0000          30.0000     +0.00%
+
+Constraints
+-----------
+regulation              constraint                                                 value        bound        margin  units  status
+----------------------------------------------------------------------------------------------------------------------------------
+-                       Wingspan within the Group III gate                       35.4965        <= 36        0.5035  m      MET
+14 CFR 25.113           Balanced field length within the runway available      7477.7619      <= 8000      522.2381  ft     MET
+14 CFR 25.121(b)(1)(i)  OEI second-segment climb gradient                         0.0563     >= 0.024        0.0323  rad    MET
+-                       Climb throttle within the engine deck                     1.0500 0.01 to 1.05        0.0000  -      ACTIVE
+-                       Cruise throttle within the engine deck                    0.8581 0.01 to 1.05        0.1919  -      MET
+
+Where each limit came from
+--------------------------
+  takeoff_field_length (14 CFR 25.113): Design field length, 8000 ft dry runway at sea level, ISA
+  engine_out_climb_gradient (14 CFR 25.121(b)(1)(i)): Two-engine aeroplane, 2.4% second-segment minimum
+
+Design constraints with no stated regulation or source: wing_span, climb_throttle, cruise_throttle.
+These bound the design; they are not certification evidence.
+
+5 of 5 constraints met, 1 active, 0 violated.
+
+Optimization SUCCEEDED: the driver converged and every constraint is met.

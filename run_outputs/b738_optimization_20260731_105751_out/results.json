@@ -1,0 +1,277 @@
+{
+  "objective": "total_fuel",
+  "sense": "minimize",
+  "succeeded": true,
+  "baseline": {
+    "model": "openconcept.examples.B738_sizing:B738SizingMissionAnalysis",
+    "num_nodes": 11,
+    "results": {
+      "geometry": {
+        "wing_MAC": 4.268445526077169,
+        "fuselage_wetted_area": 449.8157494151094,
+        "nacelle_wetted_area": 27.01769682087222,
+        "tail_lever_arm": 19.04
+      },
+      "aerodynamics": {
+        "CLmax_cruise": 1.4274347645827237,
+        "CLmax_takeoff": 2.2673048602938337
+      },
+      "propulsion": {
+        "engine_weight": 2226.72618,
+        "engines_weight": 4453.45236,
+        "thrust_reverser_weight": 832.7955913200002,
+        "engine_controls_weight": 38.757072581951824,
+        "engine_starter_weight": 47.040999246088234,
+        "fuel_system_weight": 289.46597799204574
+      },
+      "stability": {
+        "hstab_area": 27.93320969271089,
+        "vstab_area": 20.210103290587604
+      },
+      "structures": {
+        "structure_weight": 21473.13393973647,
+        "wing_weight": 5608.380887893202,
+        "hstab_weight": 609.8688446356622,
+        "vstab_weight": 600.9375827042691,
+        "fuselage_weight": 6624.32650383165,
+        "main_gear_weight": 2463.1016665954553,
+        "nose_gear_weight": 395.5535787534883,
+        "nacelle_weight": 1592.1092187000002
+      },
+      "weights": {
+        "MTOW": 78345.02011697937,
+        "OEW": 41748.193369425775,
+        "MLW": 62676.0160935835,
+        "payload": 18000.0,
+        "furnishings_weight": 4080.061502146924,
+        "avionics_weight": 487.9949553750938,
+        "electrical_weight": 692.8766881143201,
+        "apu_weight": 665.9326709943247,
+        "oxygen_weight": 128.637644113589,
+        "environmental_weight": 2032.2121277792162,
+        "flight_controls_weight": 1080.4153135789113,
+        "pressurized_volume": 317.1201033376521
+      },
+      "performance": {
+        "block_fuel": 15976.562262835292,
+        "total_fuel": 18596.826747610223,
+        "takeoff_field_length": 5247.707579877814,
+        "abort_distance": 5247.7075798778,
+        "V1": 135.05590358191913,
+        "V2": 155.4324788702694,
+        "engine_out_climb_gradient": 0.05792687901478056,
+        "mission_range_flown": 2800.0,
+        "reserve_range_flown": 200.0,
+        "climb_throttle": [
+          0.685471728033195,
+          0.8364588939885471,
+          0.8408831410704307,
+          0.8882555408839108,
+          0.9373422239094498,
+          0.979067606320714,
+          1.0319598385981381,
+          1.0495256063271932,
+          1.0499999962013162,
+          1.0450949640360803,
+          1.0170762830600055
+        ],
+        "cruise_throttle": [
+          0.8736114238061091,
+          0.8612831277146099,
+          0.8493601387687844,
+          0.8378256864649789,
+          0.8266645829061768,
+          0.8158623231848661,
+          0.8054052634770997,
+          0.7952801659500562,
+          0.7854744054562088,
+          0.7759757341490464,
+          0.7667724701660711
+        ],
+        "descent_throttle": [
+          0.37867813290399505,
+          0.3103719876760741,
+          0.24814986457783972,
+          0.20899403106506648,
+          0.17123688138356383,
+          0.14457060582137116,
+          0.12650296107358172,
+          0.10904436365020585,
+          0.09693962726808401,
+          0.08711728013381102,
+          0.060878550947305425
+        ],
+        "climb_duration": 25.9,
+        "cruise_duration": 326.7716796866877,
+        "descent_duration": 33.333333333333336,
+        "loiter_duration": 30.0
+      }
+    },
+    "unavailable": {
+      "geometry": [
+        "wing_span"
+      ]
+    }
+  },
+  "optimum": {
+    "model": "openconcept.examples.B738_sizing:B738SizingMissionAnalysis",
+    "num_nodes": 11,
+    "results": {
+      "geometry": {
+        "wing_MAC": 3.531936720566043,
+        "fuselage_wetted_area": 449.8157494151094,
+        "nacelle_wetted_area": 27.01769682087222,
+        "tail_lever_arm": 19.04
+      },
+      "aerodynamics": {
+        "CLmax_cruise": 1.5213331498306701,
+        "CLmax_takeoff": 2.4301329988440585
+      },
+      "propulsion": {
+        "engine_weight": 1761.4056278262906,
+        "engines_weight": 3522.811255652581,
+        "thrust_reverser_weight": 658.7657048070326,
+        "engine_controls_weight": 34.4704734508232,
+        "engine_starter_weight": 36.53659935025843,
+        "fuel_system_weight": 269.10761616607317
+      },
+      "stability": {
+        "hstab_area": 19.477600202466895,
+        "vstab_area": 17.61774843890669
+      },
+      "structures": {
+        "structure_weight": 19463.05917371301,
+        "wing_weight": 4978.518969255888,
+        "hstab_weight": 439.4913709467107,
+        "vstab_weight": 536.6752565246783,
+        "fuselage_weight": 6335.2191263896375,
+        "main_gear_weight": 2294.2668851613075,
+        "nose_gear_weight": 375.63934592015295,
+        "nacelle_weight": 1259.4050238957977
+      },
+      "weights": {
+        "MTOW": 72324.171425388,
+        "OEW": 37924.5906727539,
+        "MLW": 57859.33714031057,
+        "payload": 18000.0,
+        "furnishings_weight": 4075.4194278057093,
+        "avionics_weight": 451.18950732339727,
+        "electrical_weight": 666.6125733322411,
+        "apu_weight": 614.7554571157998,
+        "oxygen_weight": 128.637644113589,
+        "environmental_weight": 2032.2121277792162,
+        "flight_controls_weight": 1024.3273722197596,
+        "pressurized_volume": 317.1201033376521
+      },
+      "performance": {
+        "block_fuel": 14140.875472037886,
+        "total_fuel": 16399.580752634116,
+        "takeoff_field_length": 6228.688242919397,
+        "abort_distance": 6228.688242918912,
+        "V1": 138.83807299927662,
+        "V2": 157.138292304658,
+        "engine_out_climb_gradient": 0.0482369299234666,
+        "mission_range_flown": 2800.0,
+        "reserve_range_flown": 200.0,
+        "climb_throttle": [
+          0.685471728033195,
+          0.8364588939885471,
+          0.8408831410704307,
+          0.8882555408839108,
+          0.9373422239094498,
+          0.979067606320714,
+          1.0319598385981381,
+          1.0495256063271932,
+          1.0499999962013162,
+          1.0450949640360803,
+          1.0170762830600055
+        ],
+        "cruise_throttle": [
+          0.8736114238061091,
+          0.8612831277146099,
+          0.8493601387687844,
+          0.8378256864649789,
+          0.8266645829061768,
+          0.8158623231848661,
+          0.8054052634770997,
+          0.7952801659500562,
+          0.7854744054562088,
+          0.7759757341490464,
+          0.7667724701660711
+        ],
+        "descent_throttle": [
+          0.37867813290399505,
+          0.3103719876760741,
+          0.24814986457783972,
+          0.20899403106506648,
+          0.17123688138356383,
+          0.14457060582137116,
+          0.12650296107358172,
+          0.10904436365020585,
+          0.09693962726808401,
+          0.08711728013381102,
+          0.060878550947305425
+        ],
+        "climb_duration": 25.9,
+        "cruise_duration": 326.75028660559053,
+        "descent_duration": 33.333333333333336,
+        "loiter_duration": 30.0
+      }
+    },
+    "unavailable": {
+      "geometry": [
+        "wing_span"
+      ]
+    }
+  },
+  "constraints": [
+    {
+      "name": "takeoff_field_length",
+      "title": "Balanced field length within the runway available",
+      "regulation": "14 CFR 25.113",
+      "source": "Design field length, 8000 ft dry runway at sea level, ISA",
+      "traceable": true,
+      "bound": "<= 8000",
+      "units": "ft",
+      "value": 6228.688242919397,
+      "margin": 1771.3117570806025,
+      "status": "MET"
+    },
+    {
+      "name": "engine_out_climb_gradient",
+      "title": "OEI second-segment climb gradient",
+      "regulation": "14 CFR 25.121(b)(1)(i)",
+      "source": "Two-engine aeroplane, 2.4% second-segment minimum",
+      "traceable": true,
+      "bound": ">= 0.024",
+      "units": "rad",
+      "value": 0.0482369299234666,
+      "margin": 0.0242369299234666,
+      "status": "MET"
+    },
+    {
+      "name": "climb_throttle",
+      "title": "Climb throttle within the engine deck",
+      "regulation": "",
+      "source": "",
+      "traceable": false,
+      "bound": "0.01 to 1.05",
+      "units": null,
+      "value": 1.0499999962013162,
+      "margin": 3.798683811950809e-09,
+      "status": "ACTIVE"
+    },
+    {
+      "name": "cruise_throttle",
+      "title": "Cruise throttle within the engine deck",
+      "regulation": "",
+      "source": "",
+      "traceable": false,
+      "bound": "0.01 to 1.05",
+      "units": null,
+      "value": 0.8736114238061091,
+      "margin": 0.17638857619389092,
+      "status": "MET"
+    }
+  ]
+}

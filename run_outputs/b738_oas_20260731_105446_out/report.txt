@@ -1,0 +1,77 @@
+Black box : cdadt.adapter.analysis:SizingMissionAnalysis
+Grid      : 21 nodes per phase
+
+geometry
+--------
+  wing_MAC                               4.2684  m
+  fuselage_wetted_area                 449.8157  m**2
+  nacelle_wetted_area                   27.0177  m**2
+  wing_span                             34.3143  m
+
+aerodynamics
+------------
+  CLmax_cruise                           1.4274  -
+  CLmax_takeoff                          2.2673  -
+
+propulsion
+----------
+  engine_weight                       2226.7262  kg
+  engines_weight                      4453.4524  kg
+  thrust_reverser_weight               832.7956  kg
+  engine_controls_weight                38.7571  kg
+  engine_starter_weight                 47.0410  kg
+  fuel_system_weight                   276.5435  kg
+
+stability
+---------
+  hstab_area                            27.9332  m**2
+  vstab_area                            20.2101  m**2
+
+structures
+----------
+  structure_weight                   21208.6477  kg
+  wing_weight                         5536.6293  kg
+  hstab_weight                         600.9262  kg
+  vstab_weight                         593.2631  kg
+  fuselage_weight                     6548.2000  kg
+  main_gear_weight                    2413.0548  kg
+  nose_gear_weight                     389.6904  kg
+  nacelle_weight                      1592.1092  kg
+
+weights
+-------
+  MTOW                               76554.6907  kg
+  OEW                                41366.0257  kg
+  MLW                                61243.7526  kg
+  payload                            18000.0000  kg
+  furnishings_weight                  4078.6812  kg
+  avionics_weight                      477.0507  kg
+  electrical_weight                    682.0311  kg
+  apu_weight                           650.7149  kg
+  oxygen_weight                        128.6376  kg
+  environmental_weight                2032.2121  kg
+  flight_controls_weight              1063.8923  kg
+  pressurized_volume                   317.1201  m**3
+
+performance
+-----------
+  block_fuel                         14707.9684  kg
+  total_fuel                         17188.6650  kg
+  takeoff_field_length                4945.3427  ft
+  abort_distance                      4945.3427  ft
+  V1                                   132.2986  kn
+  V2                                   153.6463  kn
+  engine_out_climb_gradient              0.0763  rad
+  mission_range_flown                 2800.0000  nmi
+  reserve_range_flown                  200.0000  nmi
+  climb_throttle                0.5634 to 0.8542  (21 nodes)  -
+  cruise_throttle               0.6352 to 0.7240  (21 nodes)  -
+  descent_throttle              0.0223 to 0.3086  (21 nodes)  -
+  climb_duration                        25.9000  min
+  cruise_duration                      326.7785  min
+  descent_duration                      33.3333  min
+  loiter_duration                       30.0000  min
+
+Not published by this black box
+-------------------------------
+  geometry: tail_lever_arm
