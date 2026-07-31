@@ -36,6 +36,14 @@ solver:
 # Every ac| variable the box publishes, with its value and where the number came from. None is
 # freed here: this is a sizing run. See b738_optimization.yaml for the same aeroplane with
 # `optimize:` entries added.
+# A note on the wing bounds. They are not preferences: the box's empirical weight correlations
+# are fitted for a conventional metal jet transport, and docs/validation.rst publishes
+# 500-750 kg/m2 as the wing loading band that covers. An earlier version of this study allowed
+# 90 m2, which at the weights an optimizer reaches puts the loading at 759 -- outside the
+# envelope, and the Newton solver simply fails to converge there. That is what these bounds
+# keep the driver away from. The aspect-ratio ceiling follows OpenConcept's own optimizing
+# example, which caps it for the same class of reason.
+#
 design_variables:
 
   # -------------------- Aerodynamics --------------------
@@ -72,11 +80,11 @@ design_variables:
     value: 124.6
     units: m**2
     source: b737.org.uk technical specifications
-    optimize: {lower: 90.0, upper: 180.0}
+    optimize: {lower: 105.0, upper: 180.0}
   ac|geom|wing|AR:
     value: 9.45
     source: b737.org.uk technical specifications
-    optimize: {lower: 7.0, upper: 13.0}
+    optimize: {lower: 7.0, upper: 12.0}
   ac|geom|wing|c4sweep:
     value: 25
     units: deg
