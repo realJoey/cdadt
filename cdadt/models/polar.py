@@ -58,6 +58,11 @@ class PolarLoads(AerodynamicLoads):
 
     model_name: ClassVar[str] = "parabolic_polar"
 
+    #: The equation has four variables and no more. Sweep, taper and area are absent from it, so the
+    #: wrapper that installs this model declares no partials against them rather than declaring them
+    #: and reporting zero.
+    DRAG_DEPENDS_ON: ClassVar[tuple[str, ...]] = ("CL", "CD0", "e", "AR")
+
     __slots__ = ("_span_efficiency", "_zero_lift_drag")
 
     def __init__(self, span_efficiency: float, zero_lift_drag: object = 0.0) -> None:
@@ -70,13 +75,20 @@ class PolarLoads(AerodynamicLoads):
         self._zero_lift_drag = np.atleast_1d(np.asarray(zero_lift_drag, dtype=float))
 
     @classmethod
-    def build(cls, *, planform, span_efficiency, zero_lift_drag):
+    def build(
+        cls,
+        *,
+        planform: Planform,
+        span_efficiency: float,
+        zero_lift_drag: object,
+        workspace: object = None,
+    ) -> PolarLoads:
         """Build from the span efficiency and zero-lift drag; the wing's shape is not used.
 
         A parabolic polar sees the wing only through its aspect ratio, which reaches it via the
         planform passed to :meth:`coefficients`. The shape -- sweep, taper, the sections -- makes
         no difference to this model, and saying so here is more honest than accepting it and
-        quietly ignoring it.
+        quietly ignoring it. Nor does ``workspace``: an equation has nothing expensive to keep.
         """
         return cls(span_efficiency=span_efficiency, zero_lift_drag=zero_lift_drag)
 
@@ -111,12 +123,22 @@ class PolarLoads(AerodynamicLoads):
 
         Written here rather than in the OpenMDAO wrapper because they belong to the equation, and
         an optimizer steps on them. Keys are the names the wrapper declares partials against.
+
+        ``area``, ``sweep`` and ``taper`` are zero, and that is the equation speaking rather than a
+        gap: this polar sees the wing through its aspect ratio alone. Reporting them explicitly is
+        what lets the wrapper declare the same partials whatever model is installed, and what makes
+        :class:`~cdadt.adapter.avl.OpenAVLLoads` returning non-zero values there a difference in
+        physics rather than a difference in interface.
         """
         lift = condition.CL
         factor = self.induced_drag_factor(planform)
-        return {
+        gradients = {
             "CL": 2.0 * factor * lift,
             "CD0": np.ones_like(lift),
             "e": -factor * lift**2 / self._span_efficiency,
             "AR": -factor * lift**2 / planform.aspect_ratio,
         }
+        # A separate array per name rather than one shared zero: these are handed to a caller, and
+        # three keys aliasing one buffer is a mutation waiting to surprise somebody.
+        gradients.update({name: np.zeros_like(lift) for name in ("area", "sweep", "taper")})
+        return gradients

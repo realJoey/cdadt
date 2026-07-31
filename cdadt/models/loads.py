@@ -138,9 +138,9 @@ class Planform(ABC):
 class AerodynamicLoads(ABC):
     """A model that produces aerodynamic loads for a flight condition and a planform.
 
-    Subclasses implement :meth:`build` and :meth:`coefficients`. Everything else -- installing
-    the model in an OpenMDAO group, vectorising it over a mission, handing its drag to the
-    trajectory -- belongs to :mod:`cdadt.adapter` and is not a model's concern.
+    Subclasses implement :meth:`build`, :meth:`coefficients` and :meth:`drag_gradients`. Everything
+    else -- installing the model in an OpenMDAO group, vectorising it over a mission, handing its
+    drag to the trajectory -- belongs to :mod:`cdadt.adapter` and is not a model's concern.
 
     Attributes
     ----------
@@ -150,6 +150,18 @@ class AerodynamicLoads(ABC):
     """
 
     model_name: ClassVar[str]
+
+    #: The names :meth:`drag_gradients` must answer for. ``CL`` and ``CD0`` are the flight-point
+    #: quantities; the rest are the wing numbers a case file declares. A model that a variable
+    #: genuinely does not reach still reports zero for it -- explicitly, so that "this does not
+    #: affect my drag" is a statement the model makes rather than an omission the wrapper guesses.
+    GRADIENT_NAMES: ClassVar[tuple[str, ...]] = ("CL", "CD0", "e", "area", "AR", "sweep", "taper")
+
+    #: Which of :attr:`GRADIENT_NAMES` this model's drag coefficient can actually depend on. A
+    #: subclass narrows it to say so structurally, which is what lets the wrapper declare a truthful
+    #: sparsity pattern instead of claiming a dependence it then reports as zero. The default is
+    #: everything, because over-declaring is merely wasteful whereas under-declaring is wrong.
+    DRAG_DEPENDS_ON: ClassVar[tuple[str, ...]] = GRADIENT_NAMES
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Require a subclass to name itself, at the moment the class is written.
@@ -175,6 +187,7 @@ class AerodynamicLoads(ABC):
         planform: Planform,
         span_efficiency: float,
         zero_lift_drag: object,
+        workspace: object = None,
     ) -> AerodynamicLoads:
         """Construct this model from the black box's current values.
 
@@ -186,8 +199,19 @@ class AerodynamicLoads(ABC):
 
         Called on every evaluation, with values as they currently stand, because the span
         efficiency and the zero-lift drag are variables of the black box rather than
-        configuration. **Construction must therefore be cheap** -- anything expensive belongs
-        behind a cache keyed on what it depends on.
+        configuration. **Construction must therefore be cheap.**
+
+        ``workspace`` is how a model that cannot be cheap stays cheap. A vortex lattice costs tens of
+        seconds per geometry and must not pay that per Newton iteration, so it needs somewhere to
+        keep solved results that outlives one evaluation. The obvious answer -- a module-level cache
+        -- is a global by another name, and the brief forbids those; so the *caller* owns the store
+        and injects it, which puts its lifetime where the decision belongs. The analysis group
+        creates one per study and threads it down, so every phase of a mission shares one.
+
+        A model must work with ``workspace=None``, which means "no store offered, solve what you
+        need". A model that has nothing expensive to keep ignores the argument entirely --
+        :class:`~cdadt.models.polar.PolarLoads` does. What the object *is* is the model's business:
+        the interface promises only that it is handed back unchanged on every call.
         """
 
     @abstractmethod
@@ -205,6 +229,26 @@ class AerodynamicLoads(ABC):
         -------
         AeroCoefficients
             Six components, at the same number of points as ``condition``.
+        """
+
+    @abstractmethod
+    def drag_gradients(self, condition: FlightCondition, planform: Planform) -> dict[str, np.ndarray]:
+        """Return the derivatives of the drag coefficient, one entry per :attr:`GRADIENT_NAMES`.
+
+        Abstract because an optimizer steps on these. A default implementation could only be a
+        finite difference or a zero, and either would let a model ship with derivatives that are
+        quietly not its own -- which is the failure this framework exists to avoid.
+
+        Each value has the same shape as ``condition.CL``. The wrapper that installs the model
+        applies the product rule for ``drag = CD q S`` itself, so what is wanted here is the
+        derivative of the *coefficient* and nothing more.
+
+        Returns
+        -------
+        dict
+            Keyed by :attr:`GRADIENT_NAMES`; ``area``, ``AR``, ``sweep`` and ``taper`` are per unit
+            of the wing number, in the units :class:`~cdadt.models.planform.TrapezoidalPlanform`
+            uses -- square metres for area and degrees for sweep.
         """
 
     def drag(self, condition: FlightCondition, planform: Planform) -> np.ndarray:
