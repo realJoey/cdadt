@@ -28,9 +28,28 @@ authored here, but nothing in the caption can quietly drift away from what the s
 Output
 ------
 
-pyXDSM emits LaTeX/TikZ and shells out to ``pdflatex``. Where there is no LaTeX the ``.tex`` is
-still the artefact -- it is the source, and it is what a thesis would ``\\input`` -- so the build
-degrades to writing that and saying so, rather than failing or pretending a PDF exists.
+Three artefacts per diagram, each for a different reader.
+
+``.tex`` / ``.tikz``
+    pyXDSM's own output, and the source a thesis would ``\\input``. Always written.
+``.pdf``
+    Vector, for print. Needs a LaTeX engine.
+``.png``
+    What GitHub and a browser can show. Needs the PDF, then a rasteriser.
+
+pyXDSM shells out to ``pdflatex`` itself, which is not the only way to compile TikZ and is not on
+every machine. So the compile happens here instead, against whichever engine is available --
+``pdflatex`` where there is a TeX installation, otherwise ``tectonic``, which is self-contained and
+installs from conda-forge without one. Rasterising is ``pdftoppm``.
+
+**Neither is a cdadt dependency, and neither belongs in the analysis environment.** They are
+binaries that build a picture; installing a TeX engine beside a pinned numpy stack risks the stack
+for no benefit. Put them in an environment of their own and this will find them::
+
+    conda create -n xdsm_render -c conda-forge tectonic poppler
+
+Whatever is missing is skipped and said aloud, rather than failing the build or -- worse -- leaving
+a stale image in place that still claims to be current.
 
 Run from anywhere::
 
@@ -39,7 +58,9 @@ Run from anywhere::
 
 from __future__ import annotations
 
+import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -182,19 +203,99 @@ DIAGRAMS = (
 )
 
 
+class Renderer:
+    """Turns a pyXDSM ``.tex`` into the PDF and PNG a reader can actually look at.
+
+    Searches the PATH first and then any sibling conda environment, because the sane place for a
+    LaTeX engine is not beside a pinned scientific stack. Anything it cannot find, it skips and
+    reports -- and it deletes a stale output rather than leaving one that looks current.
+    """
+
+    #: Engines that can compile a standalone TikZ document, in order of preference. ``pdflatex``
+    #: first because a machine that has TeX has it; ``tectonic`` because it needs no TeX at all.
+    ENGINES = ("pdflatex", "tectonic")
+
+    __slots__ = ("_engine", "_rasteriser")
+
+    def __init__(self) -> None:
+        self._engine = next((found for name in self.ENGINES if (found := self._find(name))), None)
+        self._rasteriser = self._find("pdftoppm")
+
+    @staticmethod
+    def _find(binary: str) -> str | None:
+        """Return a path to ``binary``, looking on PATH and then in sibling conda environments."""
+        found = shutil.which(binary)
+        if found:
+            return found
+        prefix = os.environ.get("CONDA_PREFIX")
+        if not prefix:
+            return None
+        for candidate in Path(prefix).parent.glob(f"*/Library/bin/{binary}.exe"):
+            return str(candidate)
+        for candidate in Path(prefix).parent.glob(f"*/bin/{binary}"):
+            return str(candidate)
+        return None
+
+    def describe(self) -> str:
+        """One line naming what will and will not be produced."""
+        engine = Path(self._engine).stem if self._engine else "none found"
+        raster = "pdftoppm" if self._rasteriser else "none found"
+        return f"LaTeX engine: {engine} | rasteriser: {raster}"
+
+    def render(self, stem: Path) -> list[str]:
+        """Compile ``stem.tex`` to PDF and PNG. Returns what was produced."""
+        produced: list[str] = []
+        pdf, png = stem.with_suffix(".pdf"), stem.with_suffix(".png")
+        for stale in (pdf, png):
+            stale.unlink(missing_ok=True)
+
+        if self._engine is None:
+            return produced
+        command = (
+            [self._engine, "--outdir", str(stem.parent), str(stem.with_suffix(".tex"))]
+            if Path(self._engine).stem == "tectonic"
+            else [self._engine, "-interaction=nonstopmode", "-output-directory", str(stem.parent),
+                  str(stem.with_suffix(".tex"))]
+        )
+        if subprocess.run(command, capture_output=True, cwd=stem.parent).returncode or not pdf.is_file():
+            return produced
+        produced.append("pdf")
+
+        if self._rasteriser is not None:
+            # -r 200 is legible on a laptop without being a megabyte per figure.
+            subprocess.run(
+                [self._rasteriser, "-png", "-r", "200", "-singlefile", str(pdf), str(stem)],
+                capture_output=True,
+            )
+            if png.is_file():
+                produced.append("png")
+        return produced
+
+
 def main() -> int:
-    """Write one XDSM per set, and report honestly whether a PDF could be produced."""
-    latex = shutil.which("pdflatex")
-    if latex is None:
-        print("no pdflatex on PATH: writing .tex only, which is the source a thesis would input")
+    """Write one XDSM per set, and report honestly what could be produced."""
+    renderer = Renderer()
+    print(renderer.describe())
 
     for name, sizing, optimization, lattice in DIAGRAMS:
         case = CaseUnderDiagram(sizing, optimization)
-        diagram = SizingDiagram(case, lattice).build()
-        diagram.write(str(HERE / name), build=latex is not None, cleanup=latex is not None)
-        freed = ", ".join(variable.split("|")[-1] for variable in case.design_variables)
+        # Written from inside the output directory, with a bare name. pyXDSM embeds whatever path
+        # it is given into an \input, and on Windows an absolute one arrives full of backslashes --
+        # which LaTeX reads as control sequences, so the compile dies on "Undefined control
+        # sequence" pointing at what looks like a perfectly good filename.
+        previous = Path.cwd()
+        try:
+            os.chdir(HERE)
+            SizingDiagram(case, lattice).build().write(name, build=False)
+        finally:
+            os.chdir(previous)
+        produced = renderer.render(HERE / name)
+        made = ", ".join(["tex", *produced])
         print(f"{name:<22} {case.caption()}")
-        print(f"{'':<22} frees: {freed}")
+        print(f"{'':<22} wrote: {made}")
+
+    if not (HERE / DIAGRAMS[0][0]).with_suffix(".png").is_file():
+        print("\nno PNG produced: the .tex is the artefact. See this module's docstring.")
     return 0
 
 

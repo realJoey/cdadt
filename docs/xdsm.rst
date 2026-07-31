@@ -19,6 +19,11 @@ Three sets ship, and the diagrams differ in exactly one place. Read them in orde
 The aircraft configuration into OpenConcept's box
 --------------------------------------------------
 
+.. image:: xdsm/xdsm_baseline.png
+   :alt: XDSM, baseline
+   :width: 100%
+
+
 ``cases/b738.yaml`` and ``cases/b738_optimization.yaml``. Every drag number is OpenConcept's, and
 cdadt never touches the aerodynamics.
 
@@ -64,6 +69,11 @@ Five components, nine data connections. The drag polar lives inside
 
 With an openavl vortex lattice
 -------------------------------
+
+.. image:: xdsm/xdsm_openavl.png
+   :alt: XDSM, openavl
+   :width: 100%
+
 
 ``cases/b738_avl.yaml`` and ``cases/b738_avl_optimization.yaml``. Two components appear that were
 not there before, and one connection is the point of the whole layer.
@@ -132,6 +142,11 @@ group composes OpenConcept's ``WingSpan`` and OpenConcept's own group does not.
 With OpenConcept's OpenAeroStruct lattice
 ------------------------------------------
 
+.. image:: xdsm/xdsm_openaerostruct.png
+   :alt: XDSM, openaerostruct
+   :width: 100%
+
+
 ``cases/b738_oas.yaml`` and ``cases/b738_oas_optimization.yaml``. **Structurally identical to the
 figure above** -- same seven components, same fourteen connections -- with ``openavl`` replaced by
 ``OpenAeroStruct``, reached through OpenConcept's own ``VLM`` rather than directly.
@@ -139,11 +154,12 @@ figure above** -- same seven components, same fourteen connections -- with ``ope
 That the two diagrams are the same shape is the point of the abstraction, and it is what makes the
 comparison in :doc:`truth` meaningful: two independent codes, one interface, one difference.
 
-Publication-quality sources
-----------------------------
+Regenerating them
+------------------
 
-The figures above are for reading in a browser. ``docs/xdsm/`` holds the same three diagrams as
-pyXDSM sources, which is what a thesis would ``\input``:
+The figures above are pyXDSM output; the ASCII beside each is the same topology for anyone reading
+the source rather than the built page. ``docs/xdsm/`` also holds the ``.tex``, which is what a thesis
+would ``\input``:
 
 .. code-block:: bash
 
@@ -152,8 +168,15 @@ pyXDSM sources, which is what a thesis would ``\input``:
 Two things about that script are deliberate. It reads ``cases/`` to build each figure's caption --
 the analysis group, the loads model, whether wave drag is on -- so a diagram cannot come to describe
 a configuration that no longer ships, even though its topology is authored by hand. And it degrades
-honestly without LaTeX: pyXDSM emits TikZ and shells out to ``pdflatex``, so where there is none it
-writes the ``.tex`` and says so. No PDF is committed, because none was produced here and shipping
-one would be claiming a render nobody checked.
+honestly: pyXDSM emits TikZ and needs a LaTeX engine, so the build uses ``pdflatex`` where a TeX
+installation exists and ``tectonic`` otherwise, then rasterises with ``pdftoppm``. Whatever is
+missing is skipped and said aloud, and a stale image is deleted rather than left looking current.
 
-Install the extra with ``pip install -e ".[xdsm]"``.
+Neither belongs in the analysis environment -- installing a TeX engine beside a pinned numpy stack
+risks the stack to draw a picture -- so keep them apart and the build will find them::
+
+    pip install -e ".[xdsm]"                                   # pyXDSM itself
+    conda create -n xdsm_render -c conda-forge tectonic poppler  # the renderers
+
+The ``.png`` is committed because the documentation displays it. The ``.pdf`` is not: it regenerates
+from the ``.tex`` in one command and is only wanted for print.
