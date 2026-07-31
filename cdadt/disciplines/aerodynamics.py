@@ -18,10 +18,20 @@ class Aerodynamics(Discipline):
     together set the two maximum lift coefficients, the maximum operating Mach number, and the
     landing stall speed.
 
-    Every drag number in a cdadt run is computed inside the black box, at every node of every
-    phase, by OpenConcept's component-by-component parasite drag buildup and its parabolic
-    polar. This class writes the inputs to that buildup and reads the two lift coefficients back
-    out; it contains no aerodynamic model of its own and no aerodynamic constant.
+    This class writes the inputs to whatever drag model the study installed and reads the two lift
+    coefficients back out. **It contains no aerodynamic model of its own and no aerodynamic
+    constant** -- that invariant still holds, and it is what keeps a discipline an interface rather
+    than a second place physics can live.
+
+    What has changed underneath it is which model those inputs reach. On the default path every drag
+    number is computed inside the black box by OpenConcept's component-by-component parasite buildup
+    and its parabolic polar. A study may instead name one of cdadt's own -- see
+    :mod:`cdadt.models.loads` and :doc:`/aerodynamics` -- in which case the induced drag is computed
+    by a vortex lattice built on this wing and ``ac|aero|polar|e`` becomes an unused assumption,
+    because the lattice reports the span efficiency rather than reading it.
+
+    Either way the ownership is unchanged: this class owns the ``ac|aero|`` *parameters*, and the
+    model that consumes them is chosen by the case file, not by this discipline.
 
     Notes
     -----

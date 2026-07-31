@@ -29,6 +29,7 @@ from openconcept.propulsion import RubberizedTurbofan
 from openconcept.utilities import AddSubtractComp, ElementMultiplyDivideComp, Integrator
 
 from cdadt.adapter.loads import AerodynamicLoadsComp
+from cdadt.adapter.sections import WingSectionsComp
 
 __all__ = ["CdadtAircraftModel"]
 
@@ -50,6 +51,12 @@ class CdadtAircraftModel(om.Group):
         Called with ``(num_nodes, in_takeoff)`` to build the component supplying ``CD0``. ``None``
         means the aircraft has no separate parasite buildup and the loads model produces the
         whole drag coefficient itself.
+    wave_drag : bool
+        Add OpenConcept's own transonic wave drag on top of the parasite buildup. Default
+        ``False``, and the default is load-bearing: OpenConcept's ``B738AircraftModel`` has no wave
+        drag, so an aircraft that added it unasked could not reproduce the reference example, and
+        the parity anchor that makes every other comparison meaningful would be gone. Requires
+        OpenAeroStruct, which is where OpenConcept keeps the component.
     """
 
     #: Phases that run along the ground, where the flaps are down.
@@ -61,6 +68,8 @@ class CdadtAircraftModel(om.Group):
         self.options.declare("flight_phase", default=None, types=(str, type(None)))
         self.options.declare("loads_factory", types=object)
         self.options.declare("zero_lift_drag_builder", default=None, types=(object, type(None)))
+        self.options.declare("wave_drag", default=False, types=bool)
+        self.options.declare("workspace", default=None, types=object, allow_none=True)
 
     def setup(self) -> None:
         """Compose the aerodynamics, the propulsion and the weight bookkeeping."""
@@ -81,9 +90,17 @@ class CdadtAircraftModel(om.Group):
         else:
             self.add_subsystem("zero_lift_drag", builder(nodes, in_takeoff), promotes_inputs=["*"])
 
+        lift_independent_drag = "zero_lift_drag.CD0"
+        if self.options["wave_drag"]:
+            lift_independent_drag = self._add_wave_drag(nodes)
+
         self.add_subsystem(
             "aero_loads",
-            AerodynamicLoadsComp(num_nodes=nodes, loads_factory=self.options["loads_factory"]),
+            AerodynamicLoadsComp(
+                num_nodes=nodes,
+                loads_factory=self.options["loads_factory"],
+                workspace=self.options["workspace"],
+            ),
             # The whole planform is promoted, not just area and aspect ratio. A parabolic polar
             # ignores sweep and taper, but a lattice is *built* from them -- and an unpromoted
             # input silently keeps its default, so a missing name here would have the vortex
@@ -101,7 +118,7 @@ class CdadtAircraftModel(om.Group):
             ],
             promotes_outputs=["drag"],
         )
-        self.connect("zero_lift_drag.CD0", "aero_loads.CD0")
+        self.connect(lift_independent_drag, "aero_loads.CD0")
 
         # The loads component and OpenConcept's engine deck both read the altitude and the Mach
         # number, and they declare them with different units and defaults. OpenMDAO refuses that
@@ -111,6 +128,57 @@ class CdadtAircraftModel(om.Group):
         # they are what makes the group buildable at all.
         self.set_input_defaults("fltcond|h", val=np.zeros(nodes), units="m")
         self.set_input_defaults("fltcond|M", val=np.zeros(nodes))
+
+    def _add_wave_drag(self, nodes: int) -> str:
+        """Add OpenConcept's own transonic wave drag, and return the path of the summed ``CD0``.
+
+        The gap this closes was real and it was ours: neither the vortex lattice nor OpenConcept's
+        jet-transport parasite buildup carries a Mach term, so the shipped 737-800 cruised at M 0.785
+        -- above the drag-rise Mach of a real wing of that sweep -- with no transonic drag rise
+        anywhere in the model. It was documented as an absence.
+
+        It did not have to be. OpenConcept ships ``WaveDragFromSections``, a Korn-equation model
+        *"based on the Korn equation"* using *"the same wave drag approximation as OpenAeroStruct"*,
+        verified against OpenAeroStruct by OpenConcept's own ``test_wave_drag.py``. So the fix is to
+        install the dependency's component rather than to write one: cdadt supplies the sections from
+        its planform and adds the result to the parasite drag.
+
+        On the shipped wing this contributes nothing below about M 0.7, 5.0e-5 at the M 0.785 cruise
+        -- some 0.2% of the total -- and 8.8e-4 at the M 0.82 maximum, where it is 3%. Small at
+        cruise and not small at the edge of the envelope, which is the shape a drag-rise model should
+        have and is the reason its absence mattered most where a study would push hardest.
+        """
+        from openconcept.aerodynamics.openaerostruct import WaveDragFromSections
+
+        self.add_subsystem("wing_sections", WingSectionsComp(), promotes_inputs=["*"])
+        self.add_subsystem(
+            "wave_drag",
+            # specify_area_norm, so the coefficient is normalised by the same reference area the
+            # rest of the drag is. Without it the wave drag would be normalised by the region's own
+            # planform area and would not be addable to CD0 at all.
+            WaveDragFromSections(num_nodes=nodes, num_sections=2, specify_area_norm=True),
+            # The component names the wing quantities plainly; the mission names them with the ``ac|``
+            # prefix. Renaming on promotion is how OpenConcept's own groups bridge that, and it is
+            # what keeps this from being a change to the component.
+            promotes_inputs=[
+                "fltcond|M",
+                "fltcond|CL",
+                ("c4sweep", "ac|geom|wing|c4sweep"),
+                ("S_ref", "ac|geom|wing|S_ref"),
+            ],
+        )
+        for section_quantity in ("y_sec", "chord_sec", "toverc_sec"):
+            self.connect(f"wing_sections.{section_quantity}", f"wave_drag.{section_quantity}")
+
+        self.add_subsystem(
+            "total_zero_lift_drag",
+            AddSubtractComp(
+                output_name="CD0", input_names=["CD0_parasite", "CD_wave"], vec_size=nodes, scaling_factors=[1, 1]
+            ),
+        )
+        self.connect("zero_lift_drag.CD0", "total_zero_lift_drag.CD0_parasite")
+        self.connect("wave_drag.CD_wave", "total_zero_lift_drag.CD_wave")
+        return "total_zero_lift_drag.CD0"
 
     # -- propulsion and weight: OpenConcept's, unmodified --------------------------------
 

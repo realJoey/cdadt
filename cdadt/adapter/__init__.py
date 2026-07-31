@@ -23,9 +23,19 @@ What lives here
 :mod:`cdadt.adapter.analysis`
     The sizing analysis group that installs the aircraft model into
     ``FullMissionWithReserve`` -- the thing a case file names as its black box.
+:mod:`cdadt.adapter.lattice`
+    Every openavl call cdadt makes: the differentiable vortex lattice, the polar fitted from it,
+    and the exact geometry Jacobian.
+:mod:`cdadt.adapter.avl`
+    :mod:`cdadt.adapter.lattice` presented as an
+    :class:`~cdadt.models.loads.AerodynamicLoads`, so a case file can name it.
 
-Nothing here computes physics. The physics is in :mod:`cdadt.models`, which imports neither
-dependency and can be tested without them; this package is wiring.
+The wiring and the physics are still separated, but the line falls inside this package rather than
+at its edge. :mod:`~cdadt.adapter.loads`, :mod:`~cdadt.adapter.aircraft` and
+:mod:`~cdadt.adapter.analysis` compute nothing; the two lattice modules do, because driving openavl
+means importing it, and importing a dependency is only allowed here. Physics that needs *neither*
+dependency belongs in :mod:`cdadt.models`, which is where the abstraction and the parabolic polar
+live and why they can be tested without either.
 """
 
 from cdadt.adapter.loads import AerodynamicLoadsComp

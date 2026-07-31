@@ -41,6 +41,7 @@ from openconcept.utilities import AddSubtractComp
 from openconcept.weights import JetTransportEmptyWeight
 
 from cdadt.adapter.aircraft import CdadtAircraftModel
+from cdadt.adapter.lattice import LatticeLibrary
 from cdadt.loader import ClassSpec
 from cdadt.models.loads import AerodynamicLoads, LoadsError
 
@@ -73,6 +74,10 @@ class SizingMissionAnalysis(om.Group):
         ``"module:ClassName"`` naming the :class:`~cdadt.models.loads.AerodynamicLoads` to fly
         with. Defaults to the parabolic polar, which reproduces what OpenConcept's own group
         computes.
+    wave_drag : bool
+        Add OpenConcept's own Korn-equation transonic drag rise. Default ``False``, so that the
+        default analysis is the one that reproduces the reference example; a study that cares about
+        the transonic edge of the envelope turns it on. Requires OpenAeroStruct.
 
     Notes
     -----
@@ -124,6 +129,7 @@ class SizingMissionAnalysis(om.Group):
         """Declare the grid and the aerodynamics."""
         self.options.declare("num_nodes", default=11, types=int)
         self.options.declare("aerodynamic_loads", default="cdadt.models.polar:PolarLoads", types=str)
+        self.options.declare("wave_drag", default=False, types=bool)
 
     def setup(self) -> None:
         """Compose the aeroplane, the weights and the mission."""
@@ -303,6 +309,12 @@ class SizingMissionAnalysis(om.Group):
             CdadtAircraftModel,
             loads_factory=self._loads_factory(),
             zero_lift_drag_builder=jet_transport_zero_lift_drag,
+            wave_drag=self.options["wave_drag"],
+            # One workspace for the whole study, created here because this is the object whose
+            # lifetime is a study. Every phase of the mission flies the same wing, so they must
+            # share it; a workspace per phase would solve the same lattice fourteen times per
+            # design, and a workspace at module scope would be the global the brief forbids.
+            workspace=LatticeLibrary(),
         )
         self.add_subsystem(
             "mission",
@@ -329,5 +341,6 @@ class SizingMissionAnalysis(om.Group):
         """Return a representation naming the grid and the aerodynamics."""
         return (
             f"SizingMissionAnalysis(num_nodes={self.options['num_nodes']}, "
-            f"aerodynamic_loads={self.options['aerodynamic_loads']!r})"
+            f"aerodynamic_loads={self.options['aerodynamic_loads']!r}, "
+            f"wave_drag={self.options['wave_drag']})"
         )
