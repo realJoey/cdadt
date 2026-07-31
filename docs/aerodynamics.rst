@@ -353,20 +353,20 @@ The lattice reports a span efficiency of **0.990** where ``cases/b738.yaml`` ass
      - Change
    * - Maximum takeoff weight (kg)
      - 78,345.6
-     - 76,463.3
-     - −2.4%
+     - 76,827.2
+     - −1.9%
    * - Operating empty weight (kg)
      - 41,748.3
      - 41,346.4
-     - −1.0%
+     - −0.7%
    * - Fuel with reserves (kg)
      - 18,597.3
-     - 17,116.9
-     - −8.0%
+     - 17,402.7
+     - −6.4%
    * - Balanced field length (ft)
      - 5,247.8
-     - 4,940.0
-     - −5.9%
+     - 4,986.0
+     - −5.0%
 
 The parabolic-polar column is the validated reference to all printed digits, which is the point of
 having it: the lattice column is the only thing that changed.
@@ -380,7 +380,7 @@ default.
 It is also the **optimistic end of a range**, and by a measured amount. openavl ships its own
 detailed model of this aircraft, ``b737.avl``, with twist, dihedral, a kink and a real airfoil; it
 reports a span efficiency of 0.928 where cdadt's two-section untwisted trapezoid reports 0.990.
-Sized on 0.928 instead, the −8.0% fuel saving above becomes about **−5.7%**. Read :doc:`truth` for
+Sized on 0.928 instead, the lattice saving shrinks by roughly a quarter. Read :doc:`truth` for
 that comparison and :doc:`validation` before quoting any of it.
 
 Across Mach, the lattice's span efficiency rises from 0.990 at M 0 to 0.998 at M 0.85 and the

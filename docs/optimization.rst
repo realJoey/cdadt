@@ -154,19 +154,24 @@ objective evaluations and 23 sensitivity evaluations, about two minutes at 11 no
 =============================  ===========  ===========  ==========
 Quantity                       Baseline     Optimum      Change
 =============================  ===========  ===========  ==========
-Fuel with reserves (kg)        18,596.8     15,914.6     **-14.4%**
-Block fuel (kg)                15,976.6     13,716.6     -14.2%
-Maximum takeoff weight (kg)    78,345.0     71,340.0     -8.9%
-Operating empty weight (kg)    41,748.2     37,425.4     -10.4%
-Engine rating (lbf)            27,000       20,774.5     -23.1%
-Balanced field length (ft)     5,247.7      6,587.1      +25.5%
+Fuel with reserves (kg)        18,596.8     16,399.6     **-11.8%**
+Maximum takeoff weight (kg)    78,345.0     72,324.2     -7.7%
+Engine rating (lbf)            27,000       21,357.8     -20.9%
+Balanced field length (ft)     5,247.7      6,228.7      +18.7%
 =============================  ===========  ===========  ==========
 
 Four of four constraints met, one active: the **climb throttle band**. Neither certification
-constraint binds -- the field length keeps 1413 ft of margin and the second-segment gradient
-keeps 0.026 rad, more than double its minimum -- so the design that comes out is not, in this
-study, a certification-limited design. It is limited by the engine deck running out of throttle
-in the climb.
+constraint binds, so the design that comes out is not, in this study, a certification-limited
+design. It is limited by the engine deck running out of throttle in the climb.
+
+.. note::
+
+   **These numbers moved, and the reason is worth keeping.** An earlier version of this study
+   allowed a wing area down to 90 m2, which at the weights an optimizer reaches puts the wing
+   loading at 759 kg/m2 -- outside the 500-750 band :doc:`validation` publishes as the range the
+   box's empirical weight correlations were fitted over, and a region where its Newton solver
+   simply fails to converge. It reported -14.4% on fuel. That was a better answer obtained by
+   walking somewhere the model is not valid, and the bounds now keep the driver inside it.
 
 .. important::
 

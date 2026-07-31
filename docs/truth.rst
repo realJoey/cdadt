@@ -49,8 +49,9 @@ Against OpenConcept
      - ``WaveDragFromSections``, OpenConcept's Korn-equation model, verified against OpenAeroStruct
        by its own ``test_wave_drag.py``
      - **Installed rather than written.** cdadt supplies the sections from its planform and adds the
-       result to the parasite drag; off by default, so the reference example is still reproducible.
-       :mod:`tests.test_adapter`
+       result to the parasite drag. **On** wherever a lattice flies -- the mission cruises at M 0.7854
+       and neither the lattice nor the parasite buildup carries a Mach term -- and off only in
+       ``b738_parity.yaml``, which has to reproduce a reference that has none. :mod:`tests.test_adapter`
    * - Its own analysis group
      - The reference problem, again
      - The **parity anchor**: cdadt's group, cdadt's aircraft model, cdadt's loads component, flying
@@ -214,7 +215,8 @@ span efficiency is the entire mechanism by which the lattice changes the aeropla
 So it was measured rather than left as a caveat. Flying the parabolic polar at each value, which
 isolates the span efficiency from everything else, the aeroplane sized at 0.928 instead of 0.990
 carries **2.3% more fuel**, weighs 0.6% more, and needs 1.5% more runway. Carried through to the
-headline comparison in :doc:`aerodynamics`, the **−8.0% fuel saving becomes about −5.7%** if the
+headline comparison in :doc:`aerodynamics`, the lattice's fuel saving loses roughly a quarter of
+its size if the
 wing is as detailed as openavl's own reference 737 rather than as clean as cdadt's trapezoid.
 
 Read as a bound: **cdadt's lattice result is an optimistic end of a range, not a prediction.** The

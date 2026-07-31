@@ -164,7 +164,11 @@ black_box:
 With the parabolic polar — the same equation OpenConcept evaluates — this path reproduces
 `run_738_sizing_analysis` to **4e-13**, which is what proves the machinery before new physics
 rides on it. With the lattice, which reports a span efficiency of 0.990 against the 0.82 the case
-file assumes, fuel with reserves falls 8.0% and the balanced field 5.9%. Its geometry derivatives
+file assumes, fuel with reserves falls 6.4% against the reference — but that figure nets two
+effects with opposite signs, because the reference has no transonic drag rise and cannot be given
+any. Against `b738_polar.yaml`, which shares the compressibility and differs only in where the
+induced drag comes from, the lattice alone is worth **−8.1%**; the drag rise costs **+1.8%**. Its
+geometry derivatives
 are exact — `jax.jacrev` through openavl's own differentiable lattice, not a formula about it.
 Transonic drag rise is available too, from OpenConcept's own Korn-equation model, off by default so
 the reference example stays reproducible.
@@ -185,7 +189,7 @@ measured.
 | **Total derivatives** | Agree with finite differences to **1.1e-4**, with the textbook truncation/round-off minimum at step 1e-6 |
 | **Solver tolerance** | Every tolerance probed down to **1e-12** is reachable on every grid, so the shipped 1e-9 has three decades of margin |
 | **Reproducibility** | Three different continuation ladders reach the same aircraft to **1e-7**; reruns are bit-identical |
-| **Environment** | Rebuilt from scratch out of `environment.yml`; the suite passed and every number reproduced — **but that rebuild predates the aerodynamics layer**, see `docs/verification.rst` |
+| **Environment** | Rebuilt from scratch out of `environment.yml` **including the optional extras**; all 384 tests pass in it and every number reproduces |
 | **Optimality** | No feasible ±2% perturbation of any design variable improves the objective |
 | **Coverage** | **100%** of statements and branches, enforced; no exclusion list, and the two `# pragma: no cover` lines are named in `docs/verification.rst` |
 
@@ -219,14 +223,18 @@ Minimizing fuel with reserves over the wing planform and the engine rating, subj
 
 | Quantity | Baseline | Optimum | Change |
 |---|---|---|---|
-| Fuel with reserves (kg) | 18,596.8 | 15,914.6 | **−14.4%** |
-| Maximum takeoff weight (kg) | 78,345.0 | 71,340.0 | −8.9% |
-| Engine rating (lbf) | 27,000 | 20,774.5 | −23.1% |
+| Fuel with reserves (kg) | 18,596.8 | 16,399.6 | **−11.8%** |
+| Maximum takeoff weight (kg) | 78,345.0 | 72,324.2 | −7.7% |
+| Engine rating (lbf) | 27,000 | 21,357.8 | −20.9% |
 
 Four of four constraints met, one active — the climb throttle band. Neither certification
-constraint binds: the runway keeps 1,413 ft of margin and the second-segment gradient more than
-double its minimum. Three of the five design variables end on a bound, which is the bounds doing
-the modelling and is called out as such in `docs/optimization.rst`.
+constraint binds. Three of the five design variables end on a bound, which is the bounds doing the
+modelling and is called out as such in `docs/optimization.rst`.
+
+An earlier version of this study reported −14.4%, from bounds that let the optimizer reach a wing
+loading of 759 kg/m² — outside the range the box's weight correlations were fitted over, and a
+region where its solver does not converge. A better answer, obtained somewhere the model is not
+valid.
 
 ```
 regulation              constraint                                             value        bound      margin  units  status
@@ -274,8 +282,8 @@ cdadt inspect cases/b738.yaml --what inputs       # what the box accepts
 # every run writes run_outputs/<case>_<stamp>_out/ with the report, the numbers,
 # the N2, three figures, OpenMDAO's own reports and the optimizer's log
 
-pytest -q -m "not slow"                           # the fast loop, 316 tests, ~3 min
-pytest -q                                         # 380 tests, ~24 min
+pytest -q -m "not slow"                           # the fast loop, 320 tests, ~3 min
+pytest -q                                         # 384 tests, ~25 min
 pytest -q --cov=cdadt                             # and 100% statement + branch coverage
 pytest -q -m verification                         # grid, derivatives, solver, reproducibility
 pytest -q -m validation                           # reference match + physical checks

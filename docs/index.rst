@@ -51,8 +51,8 @@ Balanced field length              5,247.8 ft
 =================================  ===============
 
 Optimizing it against 14 CFR 25.113, 25.121(b) and the engine deck's throttle band, over the
-wing planform and the engine rating, cuts fuel with reserves by 14.4% and maximum takeoff weight
-by 8.9%. The climb throttle band is the active constraint; neither certification constraint
+wing planform and the engine rating, cuts fuel with reserves by 11.8% and maximum takeoff weight
+by 7.7%. The climb throttle band is the active constraint; neither certification constraint
 binds. See :doc:`optimization` and, for what is *not* established, :doc:`validation`.
 
 .. toctree::

@@ -192,7 +192,7 @@ tunnel or flight data. The vortex-lattice results are what this lattice predicts
 **cdadt's wing is a simplification of the aeroplane, and an optimistic one.** openavl ships its own
 reference model of the 737-800 -- twist, dihedral, a kink, a real airfoil, control surfaces -- and it
 reports a span efficiency of 0.928 against the 0.990 cdadt's two untwisted sections give. Sizing on
-0.928 instead carries 2.3% more fuel, which turns the −8.0% lattice saving into roughly −5.7%. The
+0.928 instead carries 2.3% more fuel, which takes roughly a quarter off the lattice saving. The
 lattice number is a bound, not a prediction. :doc:`truth` has the measurement.
 
 **It says nothing about whether OpenConcept's model is right.** Agreement to 1e-6 means cdadt
@@ -260,7 +260,7 @@ Modelling limits worth stating with a result
 
 **The engine is a scaled deck, not a design.** Thrust and fuel flow are scaled from a fixed
 CFM56 map by the rated thrust. A large change in rating extrapolates a surrogate rather than
-redesigning an engine; the shipped optimization moves it by -18.9%, which is a long way down
+redesigning an engine; the shipped optimization moves it by -20.9%, which is a long way down
 that surrogate and should be read as a sizing trend rather than as an engine.
 
 **The weight buildup is empirical and transport-shaped.** Roskam- and Raymer-class correlations

@@ -303,20 +303,24 @@ documented number to all printed digits -- MTOW 78345.6435 kg, fuel with reserve
 balanced field length 5247.7948 ft. The verification environment was then removed; the recipe,
 not the environment, is the artefact.
 
-.. warning::
+**Re-established after the aerodynamics layer, on 2026-07-31.** The rebuild above was performed
+against a 310-test suite, before openavl, JAX and OpenAeroStruct existed -- so for a while this page
+carried a warning that the recipe's optional-extra steps had never been executed from nothing. They
+have been now. A fresh environment was created from ``environment.yml`` under a different name, the
+documented steps were followed in order, and **all 384 tests passed in it**.
 
-   **That rebuild predates the aerodynamics layer, and this page is not claiming otherwise.** It
-   was performed against a 310-test suite, before openavl, OpenAeroStruct and JAX were added --
-   each of which is installed by a step the recipe now *documents* but that has never been executed
-   from scratch and checked. The two are also installed with opposite flags for opposite reasons
-   (``--no-deps`` for openavl, plain for OpenAeroStruct), which is exactly the sort of instruction
-   that is easy to get wrong on a fresh machine.
+Two things that could only have been found this way:
 
-   What still holds without qualification: the environment currently in use runs all 380 tests green
-   at 100% coverage, and the three numbers above still reproduce to all printed digits. What is
-   *not* re-established is that ``environment.yml`` plus the documented extras rebuilds that
-   environment from nothing. Redoing it is a half-hour job and it should be redone before the
-   aerodynamics results are quoted anywhere they matter.
+*The pin holds through every step, including the two that take opposite flags.* ``openavl`` declares
+``numpy>=2.4`` and must be installed ``--no-deps``, while OpenAeroStruct's requirements are all
+floors the pinned versions satisfy and it installs normally. NumPy stayed at 1.26.4 throughout, and
+OpenConcept imported without the ``0xc06d007f`` abort.
+
+*The version was written twice and had drifted.* ``pyproject.toml`` said 0.2.0 while
+``cdadt/__init__.py`` said 0.3.0, so ``pip`` installed one number and ``cdadt.__version__`` reported
+another. Nothing in the working environment could show this, because nobody reinstalls a package
+they already have. It is single-sourced now. A packaging bug, surfaced by an environment check --
+which is the argument for running one rather than reasoning about it.
 
 What the suite establishes, by claim class
 -------------------------------------------
@@ -332,10 +336,10 @@ statement about what has actually been established:
      - Count
      - Claim
    * - ``unit``
-     - 235
+     - 237
      - One cdadt class behaves as specified, with no model built
    * - ``contract``
-     - 21
+     - 23
      - The dependency boundaries and the ownership map hold. Every mandatory rule about a
        dependency has one: not subclassed, not modified, not copied, not patched, not imported
        outside the one wrapper package -- which the physics in ``cdadt.models`` also may not do --
@@ -354,8 +358,8 @@ statement about what has actually been established:
        dependency publishes, against the other dependency's vortex lattice, and against physical
        reality. :doc:`truth` maps which artefact anchors what
    * - **total**
-     - **380**
-     - ``-m "not slow"`` runs 316 of them in about three minutes
+     - **384**
+     - ``-m "not slow"`` runs 320 of them in about three minutes
 
 Coverage
 --------
