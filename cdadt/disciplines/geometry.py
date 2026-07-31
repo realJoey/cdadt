@@ -71,4 +71,13 @@ class Geometry(Discipline):
             "Wing quarter chord to tail quarter chord, estimated by the box as half the fuselage length",
             optional=True,
         ),
+        Response(
+            "wing_span",
+            "wing_span.span",
+            "m",
+            "Wing span, from area and aspect ratio. Optional because it depends on which analysis "
+            "group a case file names: cdadt's composes OpenConcept's WingSpan, and OpenConcept's "
+            "own B738 sizing group does not",
+            optional=True,
+        ),
     )

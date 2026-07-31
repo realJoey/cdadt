@@ -34,14 +34,13 @@ from functools import partial
 
 import openmdao.api as om
 from openconcept.aerodynamics import CleanCLmax, FlapCLmax, ParasiteDragCoefficient_JetTransport
-from openconcept.geometry import CylinderSurfaceArea, WingMACTrapezoidal
+from openconcept.geometry import CylinderSurfaceArea, WingMACTrapezoidal, WingSpan
 from openconcept.mission import FullMissionWithReserve
 from openconcept.stability import HStabVolumeCoefficientSizing, VStabVolumeCoefficientSizing
 from openconcept.utilities import AddSubtractComp
 from openconcept.weights import JetTransportEmptyWeight
 
 from cdadt.adapter.aircraft import CdadtAircraftModel
-from cdadt.adapter.lattice import LatticeLibrary
 from cdadt.loader import ClassSpec
 from cdadt.models.loads import AerodynamicLoads, LoadsError
 
@@ -155,7 +154,18 @@ class SizingMissionAnalysis(om.Group):
             variables.add_output(name, val=1.0, units=units)
 
     def _add_geometry(self) -> None:
-        """Wing mean chord, tail areas from volume coefficients, and the wetted areas."""
+        """Wing span and mean chord, tail areas from volume coefficients, and the wetted areas."""
+        # OpenConcept's own WingSpan, used unmodified. Its B738 sizing group does not compose it --
+        # nothing there needs the span -- but a certification-driven study does: the span is what
+        # decides which gate an aeroplane fits, and that is a design limit rather than a preference.
+        # Publishing it here is what lets a case file constrain it instead of encoding the limit
+        # implicitly as an aspect-ratio bound, which is how OpenConcept's own optimizing example has
+        # to express it ("limit to fit in group III gate" on AR <= 10.4, with the area held fixed).
+        self.add_subsystem(
+            "wing_span",
+            WingSpan(),
+            promotes_inputs=[("S_ref", "ac|geom|wing|S_ref"), ("AR", "ac|geom|wing|AR")],
+        )
         self.add_subsystem(
             "tail_lever_arm",
             AddSubtractComp(
@@ -305,16 +315,21 @@ class SizingMissionAnalysis(om.Group):
 
     def _add_mission(self, nodes: int) -> None:
         """Install the aircraft model into OpenConcept's full mission with reserves."""
+        model = self._loads_factory()
         aircraft_model = partial(
             CdadtAircraftModel,
-            loads_factory=self._loads_factory(),
+            loads_factory=model,
             zero_lift_drag_builder=jet_transport_zero_lift_drag,
             wave_drag=self.options["wave_drag"],
             # One workspace for the whole study, created here because this is the object whose
             # lifetime is a study. Every phase of the mission flies the same wing, so they must
             # share it; a workspace per phase would solve the same lattice fourteen times per
             # design, and a workspace at module scope would be the global the brief forbids.
-            workspace=LatticeLibrary(),
+            #
+            # *What* it is comes from the model, not from here. This group has no business knowing
+            # which solver a loads model uses -- and when it did guess, it guessed openavl, so a
+            # case file naming the OpenAeroStruct model was handed the wrong code's answers.
+            workspace=model.new_workspace(),
         )
         self.add_subsystem(
             "mission",
