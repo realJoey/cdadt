@@ -1,5 +1,17 @@
 # =============================================================================================
-# Boeing 737-800 -- full mission sizing, flown on cdadt's own aerodynamics
+# Boeing 737-800 -- the parity anchor: cdadt's own machinery, OpenConcept's own answer
+# =============================================================================================
+# THIS IS A VERIFICATION CASE, NOT A DESIGN STUDY. Its one job is to show that cdadt's analysis
+# group, aircraft model and loads component reproduce OpenConcept's own B738 sizing to 4e-13 --
+# so that when a different aerodynamics later changes the answer, the change is attributable to
+# physics rather than to plumbing. Every other claim in docs/aerodynamics.rst leans on it.
+#
+# Which is why `wave_drag: false` below is not an oversight. OpenConcept's B738AircraftModel has
+# no transonic drag rise, so reproducing it requires having none either. Turning it on here would
+# break the only thing this file exists to demonstrate.
+#
+# For the same aeroplane flown *physically completely* -- parabolic polar plus drag rise -- use
+# cases/b738_polar.yaml. That is the control the two lattice studies are compared against
 # =============================================================================================
 # The same aeroplane and the same mission as b738.yaml, but the drag is cdadt's rather than
 # OpenConcept's. Everything else -- the balanced-field takeoff, the Part 25 reserves, the engine
