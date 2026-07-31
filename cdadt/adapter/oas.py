@@ -300,6 +300,13 @@ class OpenAeroStructLoads(AerodynamicLoads):
         self._library = library if library is not None else LatticeLibrary(solver=OpenAeroStructLattice)
 
     @classmethod
+    def new_workspace(cls) -> object:
+        """Return a library that solves with OpenAeroStructLattice, and only with it."""
+        from cdadt.adapter.lattice import LatticeLibrary
+
+        return LatticeLibrary(solver=OpenAeroStructLattice)
+
+    @classmethod
     def build(
         cls,
         *,

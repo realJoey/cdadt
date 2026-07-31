@@ -214,6 +214,27 @@ class AerodynamicLoads(ABC):
         the interface promises only that it is handed back unchanged on every call.
         """
 
+    @classmethod
+    def new_workspace(cls) -> object | None:
+        """Return a fresh store for whatever this model is expensive to recompute, or ``None``.
+
+        The counterpart to the ``workspace`` argument of :meth:`build`. That argument settles *who
+        owns the lifetime* -- the caller, so that one store serves a whole study rather than one
+        evaluation. This settles *what the store is*, which is the model's business and nothing
+        else's: a caller that had to know would have to know which solver sits underneath, and the
+        whole point of the slot is that it does not.
+
+        Default ``None``, for a model with nothing expensive to keep. A caller creates one of these
+        per study and hands it back to :meth:`build` on every evaluation.
+
+        This exists because the alternative failed in exactly the way that matters. The analysis
+        group used to construct the store itself, which silently meant *openavl's* store -- so
+        naming the OpenAeroStruct model in a case file handed it a library full of another code's
+        answers for the same wing. The two differ by about 4%, so nothing would have raised had the
+        library not refused it by name.
+        """
+        return None
+
     @abstractmethod
     def coefficients(self, condition: FlightCondition, planform: Planform) -> AeroCoefficients:
         """Return the aerodynamic coefficients at every point of ``condition``.

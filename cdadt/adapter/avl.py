@@ -136,6 +136,13 @@ class OpenAVLLoads(AerodynamicLoads):
         self._library = library if library is not None else LatticeLibrary()
 
     @classmethod
+    def new_workspace(cls) -> object:
+        """Return a library that solves with DifferentiableLattice, and only with it."""
+        from cdadt.adapter.lattice import DifferentiableLattice, LatticeLibrary
+
+        return LatticeLibrary(solver=DifferentiableLattice)
+
+    @classmethod
     def build(
         cls,
         *,
