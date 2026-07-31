@@ -10,14 +10,14 @@ htmlcov/
 coverage.xml
 docs/_build/
 reports/
-*.sql
-*.db
-n2.html
-coloring_files/
-run_outputs/
+# *.sql
+# *.db
+# n2.html
+# coloring_files/
+# run_outputs/
 *_out/
-IPOPT.out
-SLSQP.out
+# IPOPT.out
+# SLSQP.out
 .ruff_cache/
 
 # pyXDSM build output. The .tex, .tikz and .png are committed -- the PNG is what GitHub and the
