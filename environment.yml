@@ -1,8 +1,7 @@
-# Environment for cdadt. Regenerated from a working cdadt_env with the two editable
-# installs removed: cdadt itself and openconcept are installed with `pip install -e`
-# afterwards, and a `conda env export` records them as PyPI pins that either do not exist
-# or would fetch a different OpenConcept than the local clone. See docs/install.rst.
-#
+# Environment for cdadt. Regenerated from a working cdadt_env with the editable installs
+# removed: cdadt itself, openconcept, openavl and openaerostruct are installed with
+# `pip install -e` afterwards, and a `conda env export` records them as PyPI pins that either do
+# not exist or would fetch a different copy than the local clone. See docs/install.rst.
 #
 # The libblas/libcblas/liblapack specs carry an explicit '=*openblas' build selector. That is
 # load-bearing on Windows and cannot be dropped: without it conda resolves the MKL-backed
@@ -15,6 +14,19 @@
 #   conda activate cdadt_env
 #   pip install -e <path to openconcept clone> --no-deps
 #   pip install -e ".[dev,docs]"
+#
+# Optional, for the aerodynamics cdadt owns. Both are extras: the suite runs without them and the
+# tests that need them skip rather than fail.
+#
+#   # The vortex lattice. --no-deps is required: openavl declares numpy>=2.4, which would pull
+#   # numpy 2 over the pin above and reintroduce the interpreter abort described here.
+#   pip install "jax<0.5" "jaxlib<0.5"
+#   pip install -e <path to openavl clone> --no-deps
+#
+#   # Transonic drag rise, and the second vortex lattice cdadt is validated against -- both are
+#   # OpenConcept's own components, which it keeps behind OpenAeroStruct. Safe *with* dependencies:
+#   # every requirement is a floor the pinned versions already satisfy. Dry-run to confirm.
+#   pip install -e <path to OpenAeroStruct clone>
 name: cdadt_env
 channels:
   - conda-forge

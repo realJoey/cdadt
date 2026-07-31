@@ -226,7 +226,7 @@ class CaseFileSection:
             If the value is present but is not a list.
         """
         raw = self._data.get(key, [])
-        if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
+        if not isinstance(raw, Sequence) or isinstance(raw, str | bytes):
             raise ConfigError(f"'{key}' must be a list; got {type(raw).__name__}.")
         return tuple(CaseFileSection(entry, f"{key}[{index}]") for index, entry in enumerate(raw))
 
@@ -248,7 +248,7 @@ class CaseFileSection:
         a climb rate -- and how a vector design variable is bounded element by element, which is
         what OpenConcept's aerostructural example does for a spanwise thickness distribution.
         """
-        if isinstance(value, (list, tuple)):
+        if isinstance(value, list | tuple):
             try:
                 return np.asarray([float(item) for item in value])
             except (TypeError, ValueError) as error:

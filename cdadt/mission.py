@@ -158,7 +158,7 @@ class InitialConditions:
             For any other length. Broadcasting a wrong-length schedule would quietly fly a
             different mission than the one the case file asks for.
         """
-        if not isinstance(value, (list, tuple, np.ndarray)):
+        if not isinstance(value, list | tuple | np.ndarray):
             return float(value)
         array = np.atleast_1d(np.asarray(value, dtype=float))
         size = int(np.prod(shape)) if shape else 1

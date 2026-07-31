@@ -8,7 +8,9 @@ version = "0.2.0"
 description = "A certification-driven aircraft design tool that drives OpenConcept full-mission sizing as a black box"
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.9"
+# 3.10, not 3.9: cdadt uses zip(..., strict=True), which is a 3.10 runtime feature. The floor was
+# understated, so an install on 3.9 would have resolved and then failed on the first zip.
+requires-python = ">=3.10"
 authors = [{ name = "Joey Gould" }]
 keywords = [
     "aircraft design",
@@ -43,6 +45,12 @@ plot = ["matplotlib"]
 # docs/aerodynamics.rst, which also explains why its own dependencies must not be installed
 # unpinned -- they would pull numpy 2.4 over the numpy<2 this environment requires.
 avl = ["jax<0.5", "jaxlib<0.5"]
+# Transonic drag rise and the second vortex lattice cdadt is validated against. Both are
+# OpenConcept's own components; OpenAeroStruct is where OpenConcept keeps them, so cdadt reaches it
+# only through OpenConcept and never imports it outside a validation test. Its own requirements are
+# all floors that numpy 1.26 already satisfies, so unlike openavl it installs safely with its
+# dependencies. See docs/aerodynamics.rst.
+transonic = ["openaerostruct>=2.12"]
 
 [project.scripts]
 cdadt = "cdadt.cli:main"
