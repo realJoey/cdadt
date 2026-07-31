@@ -7,6 +7,11 @@ quantity cdadt reports is compared against the reference problem it produced.
 The reference is run, not quoted. A table of numbers pasted from a previous session tests only
 that nobody edited the table.
 
+One test here does quote numbers, and the distinction matters. ``B738SizingTestCase``'s three
+literals are **OpenConcept's**, checked into OpenConcept and defended by its own suite, which is the
+opposite case: they are the only thing that catches cdadt and the installed clone drifting together.
+Quoting a dependency's declared truth is evidence; quoting your own last run is not.
+
 What a match proves, and what it does not
 -----------------------------------------
 
@@ -23,6 +28,7 @@ It proves nothing about whether OpenConcept's model is right. See :doc:`/validat
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 #: cdadt result name -> (path in the reference problem, units to compare in). Every scalar the
@@ -72,6 +78,58 @@ def test_every_reported_quantity_matches_the_reference(converged_analysis, refer
             mismatches.append(f"  {name}: cdadt {computed!r} vs OpenConcept {reference!r} (rel {error:.3e})")
 
     assert not mismatches, "cdadt does not reproduce the reference:\n" + "\n".join(mismatches)
+
+
+#: OpenConcept's own published expected values for the box cdadt drives, copied from
+#: ``openconcept/examples/tests/test_example_aircraft.py::B738SizingTestCase``, with the grid and
+#: the tolerance that test uses. These are the dependency's declared truth: version-controlled
+#: numbers it defends against its own regressions.
+PUBLISHED: dict[str, tuple[float, str]] = {
+    "mission.descent.fuel_burn_integ.fuel_burn_final": (35213.7673772348, "lbm"),
+    "mission.loiter.fuel_burn_integ.fuel_burn_final": (40991.187944303405, "lbm"),
+    "ac|weights|MTOW": (172711.3034007032, "lbm"),
+}
+
+#: The grid ``B738SizingTestCase`` runs at, and the tolerance it asserts. Both are OpenConcept's
+#: choices, not cdadt's, because the point is to be judged by the dependency's own standard.
+PUBLISHED_NODES = 5
+PUBLISHED_TOLERANCE = 1e-4
+
+
+@pytest.mark.validation
+@pytest.mark.slow
+def test_cdadt_matches_the_numbers_openconcept_publishes_for_this_box(sizing_case):
+    """The anchor a live comparison cannot provide: OpenConcept's own hard-coded values.
+
+    Every other test here runs ``run_738_sizing_analysis`` in this process and compares against
+    what it produced. That proves cdadt drives the box faithfully, but it cannot catch the two of
+    them moving together -- if OpenConcept regressed, the reference would regress with it and cdadt
+    would still agree to 1e-6.
+
+    ``B738SizingTestCase`` is the fixed point. Its three numbers are checked into OpenConcept and
+    defended by OpenConcept's own suite, so agreeing with them means agreeing with the dependency's
+    declared truth rather than with whatever the installed copy happens to compute today. Run at
+    OpenConcept's grid and judged at OpenConcept's tolerance; the measured agreement is 1.3e-6,
+    which is two decades inside it.
+    """
+    from cdadt import Config, SizingAnalysis
+
+    case = sizing_case()
+    case["black_box"]["num_nodes"] = PUBLISHED_NODES
+    analysis = SizingAnalysis(Config.from_dict(case))
+    analysis.build()
+    analysis.converge()
+
+    mismatches = []
+    for path, (published, units) in PUBLISHED.items():
+        computed = float(np.atleast_1d(np.asarray(analysis.box.get(path, units=units))).reshape(-1)[0])
+        error = abs(computed - published) / abs(published)
+        if error >= PUBLISHED_TOLERANCE:
+            mismatches.append(f"  {path}: cdadt {computed!r} vs published {published!r} (rel {error:.3e})")
+
+    assert (
+        not mismatches
+    ), "cdadt disagrees with the values OpenConcept publishes for its own sizing example:\n" + "\n".join(mismatches)
 
 
 @pytest.mark.validation

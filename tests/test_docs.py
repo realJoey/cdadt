@@ -55,7 +55,7 @@ def test_every_module_class_and_public_method_has_a_docstring():
                     continue
                 if isinstance(member, property):
                     member = member.fget
-                elif isinstance(member, (staticmethod, classmethod)):
+                elif isinstance(member, staticmethod | classmethod):
                     member = member.__func__
                 if not inspect.isfunction(member):
                     continue

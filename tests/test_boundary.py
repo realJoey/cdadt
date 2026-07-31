@@ -1,8 +1,14 @@
-"""Contract: the cdadt/OpenConcept boundary, and the ownership map that spans it.
+"""Contract: cdadt's dependency boundaries, and the ownership map that spans them.
 
-Six things are asserted here, each of which the rest of the project's claims depend on. Together
-they are every mandatory rule the project's brief states about the dependency, made enforceable
-rather than merely true.
+Everything asserted here is a rule the rest of the project's claims depend on. Together they are
+every mandatory rule the project's brief states about a dependency, made enforceable rather than
+merely true.
+
+There are three dependencies now -- OpenConcept, openavl, and OpenAeroStruct, which OpenConcept
+keeps its wave drag and its own vortex lattice behind -- and each rule below says which of them it
+covers. The rules are deliberately not uniform: OpenConcept and openavl may be imported by
+``cdadt.adapter`` and nowhere else, while OpenAeroStruct may not be imported by cdadt **at all**,
+because cdadt reaches it only through OpenConcept's components.
 
 **cdadt does not import OpenConcept.** Every module is parsed and its imports inspected. cdadt
 loads the sizing analysis by name at run time, from a string in the case file, so there is no
@@ -13,9 +19,11 @@ re-wire, and no way for "compose one part of it" to drift into "re-implement hal
 while leaving its source untouched, which no diff of the clone would ever show. Every class
 cdadt defines is walked, and its whole inheritance chain checked.
 
-**cdadt does not modify OpenConcept.** ``git status`` is run in the OpenConcept working tree.
-Separately, every commit the clone carries that upstream does not is examined, and the files it
-touches are compared against the modules cdadt actually loads.
+**cdadt does not modify its dependencies.** ``git status`` is run in each installed clone, not only
+OpenConcept's -- every number on the vortex-lattice and transonic paths is reproducible only if the
+clone that produced it is the published one. Separately, every commit the OpenConcept clone carries
+that upstream does not is examined, and the files it touches are compared against the modules cdadt
+actually loads.
 
 **cdadt does not copy OpenConcept.** The two rules above are both satisfied by a package that
 pasted the code instead: a copy has no import to find, no base class to walk, and leaves the
@@ -34,6 +42,7 @@ model of the interface, whether or not any shipped case happens to set it.
 from __future__ import annotations
 
 import ast
+import importlib
 import subprocess
 import sys
 from pathlib import Path
@@ -116,6 +125,40 @@ def test_no_cdadt_module_outside_the_adapter_imports_openconcept():
 
 
 @pytest.mark.contract
+def test_no_cdadt_module_anywhere_imports_openaerostruct_directly():
+    """OpenAeroStruct is reached *through* OpenConcept, and that distinction is the whole point.
+
+    cdadt uses two OpenAeroStruct-backed things -- OpenConcept's ``WaveDragFromSections`` for the
+    transonic drag rise, and its ``VLM`` for validation -- but it imports them from
+    ``openconcept.aerodynamics.openaerostruct``, which is an *OpenConcept* module. It never imports
+    ``openaerostruct`` itself.
+
+    That keeps the brief's rule intact rather than adding a third exemption to it: all interaction
+    with OpenConcept goes through wrapper classes in cdadt, and OpenAeroStruct is something
+    OpenConcept depends on, not something cdadt does. This rule has **no adapter exemption** --
+    unlike the OpenConcept and openavl rules, it applies to every cdadt module including the
+    adapter, because there is no place in cdadt where importing it directly would be right.
+    """
+    offenders = []
+    for source in _cdadt_sources():
+        tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module or ""]
+            else:
+                continue
+            for name in names:
+                if name == "openaerostruct" or name.startswith("openaerostruct."):
+                    offenders.append(f"{source.relative_to(PACKAGE.parent)}:{node.lineno} imports {name}")
+
+    assert (
+        not offenders
+    ), "cdadt must reach OpenAeroStruct through OpenConcept's components, never directly:\n" + "\n".join(offenders)
+
+
+@pytest.mark.contract
 def test_the_physics_cdadt_owns_depends_on_neither_dependency():
     """``cdadt.models`` is the physics, and it must stay writable and testable without either.
 
@@ -125,7 +168,7 @@ def test_the_physics_cdadt_owns_depends_on_neither_dependency():
     anything. Checked separately from the adapter rule so that relaxing one cannot quietly
     relax the other.
     """
-    forbidden = ("openconcept", "openavl")
+    forbidden = ("openconcept", "openavl", "openaerostruct")
     offenders = []
     for source in _cdadt_sources():
         module = source.relative_to(PACKAGE).with_suffix("").as_posix().replace("/", ".")
@@ -182,6 +225,34 @@ def test_the_openconcept_working_tree_is_clean():
         pytest.skip(f"OpenConcept at {repository} is not a git working tree")
     status = _git(repository, "status", "--porcelain")
     assert status == "", f"The OpenConcept clone at {repository} has uncommitted changes:\n{status}"
+
+
+@pytest.mark.contract
+def test_every_dependency_clone_is_clean_not_only_openconcepts():
+    """The rule was written for one dependency and cdadt now has three.
+
+    openavl supplies the vortex lattice and OpenAeroStruct the transonic drag rise and the second
+    lattice cdadt is validated against. Every number on those paths is only reproducible if the
+    clone that produced it is the published one, so "cdadt does not modify its dependencies" has to
+    be checked for each of them and not just for the first one it was written for.
+
+    Each is located from its installed package rather than by a hardcoded path, and skipped rather
+    than failed when it is absent, since both are optional extras.
+    """
+    dirty = []
+    for package_name in ("openavl", "openaerostruct"):
+        try:
+            package = importlib.import_module(package_name)
+        except ImportError:
+            continue
+        for directory in Path(package.__file__).resolve().parents:
+            if (directory / ".git").exists():
+                status = _git(directory, "status", "--porcelain")
+                if status:
+                    dirty.append(f"{package_name} at {directory}:\n{status}")
+                break
+
+    assert not dirty, "a dependency clone cdadt reads has uncommitted changes:\n" + "\n".join(dirty)
 
 
 @pytest.mark.contract
@@ -333,7 +404,7 @@ def test_no_cdadt_module_rebinds_an_attribute_on_an_imported_module():
         imported = {
             alias.asname or alias.name.split(".")[0]
             for node in ast.walk(tree)
-            if isinstance(node, (ast.Import, ast.ImportFrom))
+            if isinstance(node, ast.Import | ast.ImportFrom)
             for alias in node.names
         }
         for node in ast.walk(tree):
@@ -432,7 +503,7 @@ def test_cdadt_has_no_module_level_mutable_state():
                     continue
                 value = node.value
                 mutable_literal = isinstance(
-                    value, (ast.Dict, ast.List, ast.Set, ast.DictComp, ast.ListComp, ast.SetComp)
+                    value, ast.Dict | ast.List | ast.Set | ast.DictComp | ast.ListComp | ast.SetComp
                 )
                 mutable_call = (
                     isinstance(value, ast.Call)
@@ -443,6 +514,44 @@ def test_cdadt_has_no_module_level_mutable_state():
                     offenders.append(f"{source.relative_to(PACKAGE.parent)}:{node.lineno} {target.id}")
 
     assert not offenders, "cdadt must hold no module-level mutable state:\n  " + "\n  ".join(offenders)
+
+
+@pytest.mark.contract
+def test_no_cdadt_function_carries_a_cache_that_outlives_its_caller():
+    """A memoising decorator is module-level mutable state, and the other guards cannot see it.
+
+    This was a real hole rather than a hypothetical one. ``cdadt.adapter.lattice`` memoised its
+    lattice solves with ``@lru_cache`` on a module-level function, which is the obvious way to cache
+    a geometry-keyed solve -- and it survived every check on this page, because both of the guards
+    above look for *assignments* of mutable literals and a decorator assigns nothing. Meanwhile
+    :doc:`/architecture` claimed the suite enforced that cdadt has no shared mutable state.
+
+    What made it more than a technicality: the cache persisted across every ``Problem`` in the
+    process, anyone who could import the module could empty it through ``cache_clear()``, and two
+    independently constructed models were handed the same object. The replacement is
+    :class:`~cdadt.adapter.lattice.LatticeLibrary` -- the same memo, owned by an object whose
+    lifetime the caller chooses and injects.
+    """
+    caching = {"lru_cache", "cache", "cached_property"}
+    offenders = []
+    for source in _cdadt_sources():
+        tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            for decorator in node.decorator_list:
+                # Both `@lru_cache` and `@lru_cache(maxsize=...)`, and dotted forms of either.
+                reference = decorator.func if isinstance(decorator, ast.Call) else decorator
+                name = reference.attr if isinstance(reference, ast.Attribute) else getattr(reference, "id", "")
+                if name in caching:
+                    offenders.append(
+                        f"{source.relative_to(PACKAGE.parent)}:{node.lineno} {node.name} is decorated with {name}"
+                    )
+
+    assert not offenders, (
+        "a cache on a function outlives every caller and is reachable by anyone who can import the "
+        "module; give it to an object whose lifetime somebody owns instead:\n  " + "\n  ".join(offenders)
+    )
 
 
 @pytest.mark.contract
@@ -478,7 +587,7 @@ def test_cdadt_has_no_class_level_mutable_state():
             for attribute, value in vars(obj).items():
                 if attribute.startswith("__"):
                     continue
-                if isinstance(value, (dict, list, set)):
+                if isinstance(value, dict | list | set):
                     offenders.append(f"{obj.__module__}.{name}.{attribute} = {type(value).__name__}")
 
     assert not offenders, "cdadt must hold no class-level mutable state:\n  " + "\n  ".join(offenders)
