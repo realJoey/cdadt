@@ -1160,6 +1160,30 @@ def test_the_openaerostruct_geometry_derivatives_are_exact():
 
 @needs_openaerostruct
 @pytest.mark.unit
+def test_each_model_supplies_the_workspace_it_needs():
+    """The model says what store it needs; the caller decides how long it lives.
+
+    This is the pairing that stops a case file naming one lattice and being handed the other one's
+    answers. The analysis group used to construct the store itself, which silently meant openavl's,
+    so the OpenAeroStruct model was refused its own workspace -- correctly, and only because the
+    library checks. Now the group asks.
+    """
+    from cdadt.adapter.lattice import DifferentiableLattice, LatticeLibrary
+
+    assert PolarLoads.new_workspace() is None, "an equation has nothing expensive to keep"
+
+    for model, solver in ((OpenAVLLoads, DifferentiableLattice), (OpenAeroStructLoads, OpenAeroStructLattice)):
+        workspace = model.new_workspace()
+        assert isinstance(workspace, LatticeLibrary)
+        assert workspace.solver is solver, f"{model.__name__} asked for the wrong solver's library"
+        assert len(workspace) == 0, "a fresh workspace has solved nothing"
+        # And the model accepts the one it asked for, which is the round trip that matters.
+        wing = TrapezoidalPlanform(area=124.6, aspect_ratio=9.45, sweep=25.0, taper=0.159)
+        assert model.build(planform=wing, span_efficiency=0.8, zero_lift_drag=0.0, workspace=workspace)
+
+
+@needs_openaerostruct
+@pytest.mark.unit
 def test_a_library_belongs_to_one_solver():
     """A store of solved polars is a store of *one code's* answers, and mixing them is silent.
 

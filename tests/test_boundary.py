@@ -470,10 +470,22 @@ def test_every_reported_response_exists_in_the_box(built_box):
 
 @pytest.mark.contract
 def test_the_optional_responses_of_the_shipped_case_are_all_available(built_box, converged_analysis):
-    """The shipped box publishes the whole weight breakdown; record it if that ever changes."""
+    """Which optional responses the shipped box publishes, stated exactly rather than assumed.
+
+    This used to assert that *nothing* was unavailable, which was true when every optional response
+    happened to exist in OpenConcept's own sizing group. It stopped being true the moment cdadt
+    published a response that group does not compose, and the honest fix is to name what is missing
+    rather than to drop the check.
+
+    ``wing_span`` is the case. cdadt's own analysis group composes OpenConcept's ``WingSpan``, so a
+    study on that group can constrain the span against a gate limit. ``B738SizingMissionAnalysis``
+    never composes it -- nothing in it needs a span -- so on the shipped case the response is
+    genuinely absent, and reporting it as absent is the mechanism working rather than failing.
+    """
     unavailable = converged_analysis.aircraft.missing(built_box)
-    assert not unavailable, "The shipped black box no longer publishes: " + "; ".join(
-        f"{d}: {', '.join(names)}" for d, names in unavailable.items()
+    assert unavailable == {"geometry": ("wing_span",)}, (
+        "the shipped black box's optional responses have changed; if that is intended, say so here "
+        f"rather than leaving the list to drift: {unavailable}"
     )
 
 

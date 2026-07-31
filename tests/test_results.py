@@ -110,7 +110,10 @@ def test_a_real_run_reports_every_discipline(converged_analysis):
         "weights",
         "performance",
     }
-    assert not results.missing, results.missing
+    # Not "nothing is missing" -- that was only ever true by accident. An optional response is one
+    # that some black boxes publish and others do not, so a run report is complete when it says
+    # which, and this is the shipped box's answer.
+    assert results.missing == {"geometry": ("wing_span",)}, results.missing
 
 
 @pytest.mark.integration
@@ -191,3 +194,22 @@ def test_the_report_skips_empty_disciplines_and_names_what_was_unavailable():
     assert "MTOW" in report
     assert "Not published by this black box" in report
     assert "structures: wing_weight, fuselage_weight" in report
+
+
+@pytest.mark.unit
+def test_a_report_stays_silent_about_what_is_not_missing():
+    """The "Not published" section appears only when something genuinely is not published.
+
+    Every case cdadt ships happens to have one optional response its black box does not publish --
+    ``wing_span`` on OpenConcept's own group, ``tail_lever_arm`` on cdadt's -- so the section is
+    always there in practice, and the branch that omits it stopped being exercised. A heading
+    followed by nothing is worse than no heading, so it is worth holding.
+    """
+    complete = SizingResults({"weights": {"MTOW": 1.0}}, model="a:Box", num_nodes=3)
+    assert "Not published by this black box" not in complete.report()
+
+    incomplete = SizingResults(
+        {"weights": {"MTOW": 1.0}}, missing={"structures": ("wing_weight",)}, model="a:Box", num_nodes=3
+    )
+    assert "Not published by this black box" in incomplete.report()
+    assert "structures: wing_weight" in incomplete.report()
