@@ -23,12 +23,59 @@ Switching between them is one line of a case file:
        #                  cdadt.models.polar:PolarLoads
      num_nodes: 21
 
-``cases/b738_cdadt_aero.yaml`` is that case, and it is the same aeroplane and the same mission as
-``cases/b738.yaml``.
-
 .. contents::
    :local:
    :depth: 1
+
+The shipped cases, and which question each answers
+---------------------------------------------------
+
+Every one flies the same aeroplane, the same 2800 nmi mission and the same reserves. They differ in
+where the drag comes from, and in one case in whether the aeroplane is flown physically completely.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 22 12 36
+
+   * - Case
+     - Aerodynamics
+     - Wave drag
+     - What it is for
+   * - ``b738.yaml``
+     - OpenConcept's own
+     - none possible
+     - The reference. Drives ``B738SizingMissionAnalysis`` itself
+   * - ``b738_parity.yaml``
+     - cdadt group, polar
+     - off
+     - **Verification.** Reproduces the reference to 4e-13, which is what makes any later
+       difference attributable to physics. Wave drag is off because the reference has none
+   * - ``b738_polar.yaml``
+     - cdadt group, polar
+     - on
+     - **The control.** The same aeroplane flown completely, so a lattice can be compared against
+       it with only the induced-drag model differing
+   * - ``b738_avl.yaml``
+     - openavl lattice
+     - on
+     - Induced drag from the wing's shape, far-field
+   * - ``b738_oas.yaml``
+     - OpenAeroStruct lattice
+     - on
+     - The same, through OpenConcept's own lattice, near-field
+
+Every one has an ``_optimization`` twin -- ``b738_optimization.yaml``,
+``b738_polar_optimization.yaml``, ``b738_avl_optimization.yaml`` and
+``b738_oas_optimization.yaml`` -- except ``b738_parity.yaml``, whose only job is to be compared
+against the reference. The twins differ from their sizing cases in three things and no others:
+eleven nodes rather than twenty-one, ``optimize:`` entries on five design variables, and the
+``driver``, ``constraints`` and ``objective`` blocks at the end.
+
+Why the control exists is worth a sentence, because it is the difference between a number that
+means something and one that does not. The reference has no transonic drag rise anywhere and cannot
+be given any, so comparing a lattice against it nets an induced-drag saving against a drag-rise
+penalty and reports the two as one figure. Against ``b738_polar.yaml`` -- same compressibility, same
+everything -- a difference *is* the lattice.
 
 Why cdadt needs its own analysis group
 --------------------------------------
@@ -414,16 +461,47 @@ it.
        wave_drag: true
 
 cdadt supplies the sections from its planform -- :class:`~cdadt.adapter.sections.WingSectionsComp`,
-with analytic derivatives -- and adds the result to the parasite drag. On the shipped wing it
-contributes nothing below about M 0.7, **5.0e-5 at the M 0.785 cruise** (some 0.2% of the total) and
-**8.8e-4 at the M 0.82 maximum**, where it is 3%. Flying the whole mission with it costs 1.8% more
-fuel and 0.6% more MTOW.
+with analytic derivatives -- and adds the result to the parasite drag.
 
-**It is off by default, and that default is load-bearing.** ``B738AircraftModel`` has no wave drag,
-so an aircraft model that added it unasked could not reproduce the reference example, and the parity
-anchor that makes every other comparison here meaningful would be gone. Turn it on for a study that
-moves sweep or thickness; those are exactly the variables whose transonic effect is otherwise
-missing. Needs OpenAeroStruct installed, since that is where OpenConcept keeps the component.
+**The shipped mission cruises at M 0.7854.** That is not a number the case file states; it falls out
+of the altitude and airspeed it does state, and it is held for the whole cruise phase. At that Mach,
+on this wing at the 0.12 thickness the case declares, the Korn model puts wave drag at **2.2% of
+total cruise drag**, rising to **11.6%** at the M 0.82 declared as ``Mach_max``:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 35 35
+
+   * - Mach
+     - :math:`C_{D_\mathrm{wave}}`
+     - share of total drag
+   * - 0.70
+     - 0.000000
+     - 0.00%
+   * - 0.75
+     - 0.000022
+     - 0.08%
+   * - **0.7854 (cruise)**
+     - **0.000609**
+     - **2.20%**
+   * - 0.80
+     - 0.001414
+     - 4.97%
+   * - 0.82 (``Mach_max``)
+     - 0.003557
+     - 11.62%
+
+So it is **on by default** in every case file that flies a lattice. Neither the lattice nor
+OpenConcept's parasite buildup carries a Mach term, so with it off a transonic aeroplane is flown
+with no drag rise at all -- and the sweep the optimizer picks is meaningless, as :doc:`optimization`
+shows.
+
+The exception is the parity anchor: ``B738AircraftModel`` has no wave drag, so reproducing the
+reference example requires it off. That is a verification case, not a design case.
+
+These figures were first published an order of magnitude too small, from a probe that used a
+thickness ratio of 0.10 against the case file's 0.12. A drag-rise model is exponential in the wrong
+direction to guess at.
 
 What it costs
 -------------

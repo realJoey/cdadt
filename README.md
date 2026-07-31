@@ -134,11 +134,23 @@ result, not a preference — see `docs/openconcept.rst`.
 
 ## Your own aerodynamics, inside their mission
 
-The drag can be cdadt's. `cases/b738_cdadt_aero.yaml` flies the same aeroplane and the same
-mission with a vortex lattice built on its wing, while the trajectory, balanced field, reserves,
-engine deck and weight closure stay OpenConcept's. **Two lattices are available behind one
-interface** — openavl, and OpenConcept's own OpenAeroStruct — so the aerodynamics can be checked
-against an independent code rather than taken on one solver's word. Switching is one line.
+The drag can be cdadt's. `cases/b738_avl.yaml` flies the same aeroplane and the same mission with a
+vortex lattice built on its wing, while the trajectory, balanced field, reserves, engine deck and
+weight closure stay OpenConcept's. **Two lattices are available behind one interface** — openavl,
+and OpenConcept's own OpenAeroStruct — so the aerodynamics can be checked against an independent
+code rather than taken on one solver's word. Switching is one line.
+
+| case | aerodynamics | wave drag | for |
+|---|---|---|---|
+| `b738.yaml` | OpenConcept's own | none possible | the reference |
+| `b738_parity.yaml` | cdadt group, polar | off | **verification** — reproduces the reference to 4e-13 |
+| `b738_polar.yaml` | cdadt group, polar | on | **the control** — a lattice differs from this by the lattice alone |
+| `b738_avl.yaml` | openavl | on | induced drag from the wing's shape |
+| `b738_oas.yaml` | OpenAeroStruct | on | the same, through OpenConcept's own lattice |
+
+Every one has an `_optimization` twin — `b738_optimization.yaml`, `b738_polar_optimization.yaml`,
+`b738_avl_optimization.yaml`, `b738_oas_optimization.yaml` — except `b738_parity.yaml`, which
+exists only to be checked against the reference and has nothing to optimize.
 
 ```yaml
 black_box:
