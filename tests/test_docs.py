@@ -18,7 +18,8 @@ import pytest
 import cdadt
 from cdadt import ResponseCatalog
 
-DOCS = Path(__file__).resolve().parent.parent / "docs"
+ROOT = Path(__file__).resolve().parent.parent
+DOCS = ROOT / "docs"
 
 #: Members exempt from the docstring requirement, and why.
 #:
@@ -102,3 +103,73 @@ def test_every_prose_page_is_reachable_from_the_index():
     pages = {path.stem for path in DOCS.glob("*.rst")} - {"index"}
     unlinked = sorted(page for page in pages if page not in index)
     assert not unlinked, f"These pages are not in the index toctree: {unlinked}"
+
+
+#: How the case table in ``README.md`` describes each aerodynamics, and the class that description
+#: must correspond to. ``None`` means the case names no loads model at all, because it drives
+#: OpenConcept's own analysis group.
+AERODYNAMICS_DESCRIPTIONS = {
+    "OpenConcept's own": None,
+    "cdadt group, polar": "cdadt.models.polar:PolarLoads",
+    "openavl": "cdadt.adapter.avl:OpenAVLLoads",
+    "OpenAeroStruct": "cdadt.adapter.oas:OpenAeroStructLoads",
+}
+
+
+@pytest.mark.contract
+def test_the_case_table_describes_the_case_files_that_exist():
+    """Prose that names a case file must describe the case file it names.
+
+    This is the one class of documentation error nothing here was catching, and it went out in a
+    push. ``README.md`` stated that a case *"flies the same aeroplane and the same mission with a
+    vortex lattice built on its wing"* while that file set
+    ``aerodynamic_loads: cdadt.models.polar:PolarLoads`` -- a parabolic polar, with the lattice
+    lines commented out directly above it. Every other check here passed: the numbers were anchored,
+    the response names were real, the page was reachable. None of them reads a case file.
+
+    So this one does. For every row of the table, the aerodynamics named in the prose and the wave
+    drag it claims are compared against what the YAML actually sets.
+    """
+    table = re.findall(
+        r"^\| `(b738[a-z_]*\.yaml)` \| ([^|]+?) \| ([^|]+?) \|", (ROOT / "README.md").read_text(encoding="utf-8"), re.M
+    )
+    assert len(table) >= 5, f"the case table has shrunk to {len(table)} rows; is it still there?"
+
+    mismatches = []
+    for name, described, wave_claimed in table:
+        case = ROOT / "cases" / name
+        if not case.is_file():
+            mismatches.append(f"{name}: named in the table, absent from cases/")
+            continue
+        settings = "\n".join(line.split("#")[0] for line in case.read_text(encoding="utf-8").splitlines())
+
+        expected = AERODYNAMICS_DESCRIPTIONS.get(described.strip())
+        actual = re.search(r"^    aerodynamic_loads: (\S+)", settings, re.M)
+        actual = actual.group(1) if actual else None
+        if expected != actual:
+            mismatches.append(f"{name}: table says {described.strip()!r}, file sets {actual}")
+
+        wave = re.search(r"^    wave_drag: (\S+)", settings, re.M)
+        wave = wave.group(1) if wave else None
+        claimed = wave_claimed.strip()
+        truth = {"on": "true", "off": "false", "none possible": None}.get(claimed, "?")
+        if truth != wave:
+            mismatches.append(f"{name}: table claims wave drag {claimed!r}, file sets {wave}")
+
+    assert not mismatches, "the documented case table does not match the case files:\n  " + "\n  ".join(mismatches)
+
+
+@pytest.mark.contract
+def test_every_case_file_appears_in_the_documentation():
+    """A case nobody documents is one nobody knows the purpose of, which is how duplicates happen.
+
+    One did: a case file that had become byte-for-byte identical to another once a default changed,
+    and nothing noticed because neither was described anywhere.
+    """
+    documented = set()
+    for page in (ROOT / "README.md", *sorted(DOCS.glob("*.rst"))):
+        documented |= set(re.findall(r"(b738[a-z_]*\.yaml)", page.read_text(encoding="utf-8")))
+
+    present = {path.name for path in (ROOT / "cases").glob("*.yaml")}
+    assert not present - documented, f"case files nothing documents: {sorted(present - documented)}"
+    assert not documented - present, f"documentation names case files that do not exist: {sorted(documented - present)}"
