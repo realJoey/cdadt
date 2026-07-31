@@ -4,7 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cdadt"
-version = "0.2.0"
+# Read from cdadt/__init__.py rather than written twice. The two had already drifted -- this file
+# said 0.2.0 while the package reported 0.3.0, so `pip` installed one version and `cdadt.__version__`
+# claimed another. A from-scratch rebuild is what surfaced it, which is the argument for doing one.
+dynamic = ["version"]
 description = "A certification-driven aircraft design tool that drives OpenConcept full-mission sizing as a black box"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -57,6 +60,9 @@ cdadt = "cdadt.cli:main"
 
 [project.urls]
 Repository = "https://github.com/realJoey/cdadt"
+
+[tool.setuptools.dynamic]
+version = { attr = "cdadt.__version__" }
 
 [tool.setuptools.packages.find]
 include = ["cdadt*"]
