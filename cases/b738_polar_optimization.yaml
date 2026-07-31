@@ -1,0 +1,334 @@
+# =============================================================================================
+# Boeing 737-800 -- optimization on a parabolic polar, with transonic drag rise
+# =============================================================================================
+# b738_optimization.yaml asks the same question of the same aeroplane through a parabolic polar
+# with a fixed span efficiency. This one asks it of a wing whose induced drag is computed from
+# its shape.
+#
+# That distinction matters most here rather than in a sizing run. The four wing numbers freed
+# below -- area, aspect ratio, quarter-chord sweep and taper -- are exactly the four the lattice
+# is differentiated with respect to. Under the parabolic polar, sweep and taper cannot change the
+# induced drag at all, because the equation does not contain them; the optimizer moves them only
+# through the weight and parasite-drag buildups. Here they move the drag directly, with exact
+# derivatives from jax.vjp through openavl's own geometry rebuild.
+#
+# Cost: the lattice is re-solved whenever the wing moves, which under an optimizer is every
+# design iteration -- roughly 30 s of lattice per iteration on top of the mission solve. That is
+# the price of an exact geometry derivative rather than a surrogate that drifts.
+#
+# Requires the optional extra:  pip install -e ".[avl]"
+# =============================================================================================
+
+black_box:
+  # cdadt's own analysis group, not OpenConcept's. That is what makes the substitution possible:
+  # B738_sizing.py writes `aircraft_model=B738AircraftModel` at the line where it builds the
+  # mission, so the aerodynamics cannot be reached from outside that group. Everything else here
+  # is still OpenConcept's, composed exactly as its own example composes it -- the trapezoidal
+  # geometry, the tail volume-coefficient sizing, the maximum-lift estimates, the jet-transport
+  # empty-weight buildup, and FullMissionWithReserve with its balanced field and Part 25 reserves.
+  model: cdadt.adapter.analysis:SizingMissionAnalysis
+  options:
+    # The parabolic polar, but inside cdadt's group and WITH transonic drag rise. This is the
+    # control case: it shares the compressibility, the geometry, the weights and the mission with
+    # the two lattice studies, and differs from them in exactly one thing -- where the induced drag
+    # comes from.
+    #
+    # It exists because the obvious baseline cannot play that role. cases/b738_optimization.yaml
+    # drives OpenConcept's own analysis group, which has no wave drag anywhere and cannot be given
+    # any without modifying the dependency, so a difference between it and a lattice study mixes
+    # two effects. This case separates them: against it, a difference IS the lattice.
+    #
+    # The span efficiency below is therefore load-bearing here in a way it is not for the lattices,
+    # which compute their own and ignore it.
+    aerodynamic_loads: cdadt.models.polar:PolarLoads
+    # Transonic drag rise is ON. The mission cruises at M 0.7854 and touches it in climb and
+    # descent, and at that Mach the Korn model puts wave drag at 2.2% of total cruise drag on this
+    # wing -- rising to 11.6% at the M 0.82 the case file declares as Mach_max. Neither the vortex
+    # lattice nor OpenConcept's parasite buildup carries a Mach term, so with this off the study
+    # flies a transonic aeroplane with no drag rise whatsoever.
+    #
+    # It also changes the answer qualitatively, not just quantitatively: with it off, sweep is a
+    # variable the optimizer can only lose by, and it drives quarter-chord sweep to its lower bound.
+    # With it on, sweep goes the other way, to about 31 degrees.
+    #
+    # Requires OpenAeroStruct, which is where OpenConcept keeps the component.
+    wave_drag: true
+  num_nodes: 11          # must be odd; coarser than the sizing case, as an optimizer visits many designs
+
+solver:
+  maxiter: 50            # an optimizer visits designs a human would not
+  atol: 1.0e-9
+  rtol: 1.0e-9
+  iprint: -1
+  err_on_non_converge: true
+
+# ---------------------------------------------------------------------------------------------
+# Design variables
+# ---------------------------------------------------------------------------------------------
+# Every ac| variable the box publishes, with its value and where the number came from. None is
+# freed here: this is a sizing run. See b738_optimization.yaml for the same aeroplane with
+# `optimize:` entries added.
+design_variables:
+
+  # -------------------- Aerodynamics --------------------
+  ac|aero|polar|e:
+    value: 0.801
+    source: OpenConcept B738 example estimate
+  ac|aero|Mach_max:
+    value: 0.82
+    source: Boeing 737-800 maximum operating Mach
+  ac|aero|Vstall_land:
+    value: 115
+    units: kn
+    source: OpenConcept B738_sizing estimate
+  ac|aero|airfoil_Cl_max:
+    value: 1.75
+    source: OpenConcept B738_sizing estimate for a supercritical airfoil
+  ac|aero|takeoff_flap_deg:
+    value: 15
+    units: deg
+    source: Boeing 737-800 normal takeoff flap setting
+
+  # -------------------- Propulsion --------------------
+  ac|propulsion|engine|rating:
+    value: 27.0e3
+    units: lbf
+    source: CFM56-7B27 sea-level static thrust
+    optimize: {lower: 18.0e3, upper: 34.0e3}
+  ac|propulsion|num_engines:
+    value: 2
+    source: Boeing 737-800 configuration
+
+  # -------------------- Wing --------------------
+  ac|geom|wing|S_ref:
+    value: 124.6
+    units: m**2
+    source: b737.org.uk technical specifications
+    optimize: {lower: 105.0, upper: 180.0}
+  ac|geom|wing|AR:
+    value: 9.45
+    source: b737.org.uk technical specifications
+    optimize: {lower: 7.0, upper: 12.0}
+  ac|geom|wing|c4sweep:
+    value: 25
+    units: deg
+    source: b737.org.uk technical specifications
+    optimize: {lower: 15.0, upper: 32.0}
+  ac|geom|wing|taper:
+    value: 0.159
+    source: b737.org.uk technical specifications
+    optimize: {lower: 0.12, upper: 0.35}
+  ac|geom|wing|toverc:
+    value: 0.12
+    source: OpenConcept B738_sizing estimate
+
+  # -------------------- Horizontal stabilizer --------------------
+  # Its area is absent on purpose: the box sizes it from the tail volume coefficient.
+  ac|geom|hstab|AR:
+    value: 6.16
+    source: b737.org.uk technical specifications
+  ac|geom|hstab|c4sweep:
+    value: 30
+    units: deg
+    source: b737.org.uk technical specifications
+  ac|geom|hstab|taper:
+    value: 0.203
+    source: b737.org.uk technical specifications
+  ac|geom|hstab|toverc:
+    value: 0.12
+    source: OpenConcept B738_sizing estimate
+
+  # -------------------- Vertical stabilizer --------------------
+  ac|geom|vstab|AR:
+    value: 1.91
+    source: b737.org.uk technical specifications
+  ac|geom|vstab|c4sweep:
+    value: 35
+    units: deg
+    source: b737.org.uk technical specifications
+  ac|geom|vstab|taper:
+    value: 0.271
+    source: b737.org.uk technical specifications
+  ac|geom|vstab|toverc:
+    value: 0.12
+    source: OpenConcept B738_sizing estimate
+
+  # -------------------- Fuselage --------------------
+  ac|geom|fuselage|length:
+    value: 38.08
+    units: m
+    source: b737.org.uk technical specifications
+  ac|geom|fuselage|height:
+    value: 3.76
+    units: m
+    source: b737.org.uk technical specifications
+
+  # -------------------- Nacelle --------------------
+  ac|geom|nacelle|length:
+    value: 4.3
+    units: m
+    source: OpenConcept B738_sizing photogrammetry estimate
+  ac|geom|nacelle|diameter:
+    value: 2
+    units: m
+    source: OpenConcept B738_sizing photogrammetry estimate
+
+  # -------------------- Landing gear --------------------
+  ac|geom|maingear|length:
+    value: 1.8
+    units: m
+    source: OpenConcept B738_sizing estimate
+  ac|geom|maingear|num_wheels:
+    value: 4
+    source: Boeing 737-800 configuration
+  ac|geom|maingear|num_shock_struts:
+    value: 2
+    source: Boeing 737-800 configuration
+  ac|geom|nosegear|length:
+    value: 1.3
+    units: m
+    source: OpenConcept B738_sizing estimate
+  ac|geom|nosegear|num_wheels:
+    value: 2
+    source: Boeing 737-800 configuration
+
+  # -------------------- Weights, cabin and occupancy --------------------
+  ac|weights|W_payload:
+    value: 18.0e3
+    units: kg
+    source: OpenConcept B738_sizing design payload
+  ac|num_passengers_max:
+    value: 189
+    source: Boeing 737-800 single-class maximum
+  ac|num_flight_deck_crew:
+    value: 2
+    source: Boeing 737-800 configuration
+  ac|num_cabin_crew:
+    value: 4
+    source: Boeing 737-800 configuration
+  ac|cabin_pressure:
+    value: 8.95
+    units: psi
+    source: Boeing 737-800 cabin differential
+
+# ---------------------------------------------------------------------------------------------
+# Initial conditions
+# ---------------------------------------------------------------------------------------------
+# The direct counterpart of `set_values(prob, num_nodes)`, with the same names. A two-element
+# value is interpolated across the phase, exactly as `np.linspace(2300.0, 400.0, num_nodes)`
+# does there; a single value is constant; a full-length list is used as given.
+initial_conditions:
+
+  # -------------------- Mission-level --------------------
+  mission_range: {value: 2800, units: nmi}
+  cruise|h0:     {value: 35000, units: ft}
+  reserve_range: {value: 200, units: nmi}
+  reserve|h0:    {value: 15000, units: ft}
+
+  # -------------------- Per-phase speed and vertical speed --------------------
+  climb.fltcond|Ueas:           {value: [230, 252], units: kn}
+  climb.fltcond|vs:             {value: [2300, 400], units: ft/min}
+  cruise.fltcond|Ueas:          {value: 252, units: kn}
+  cruise.fltcond|vs:            {value: 0, units: ft/min}
+  descent.fltcond|Ueas:         {value: [252, 250], units: kn}
+  descent.fltcond|vs:           {value: [-1300, -800], units: ft/min}
+  reserve_climb.fltcond|Ueas:   {value: 230, units: kn}
+  reserve_climb.fltcond|vs:     {value: [3000, 2300], units: ft/min}
+  reserve_cruise.fltcond|Ueas:  {value: 250, units: kn}
+  reserve_cruise.fltcond|vs:    {value: 0, units: ft/min}
+  reserve_descent.fltcond|Ueas: {value: 250, units: kn}
+  reserve_descent.fltcond|vs:   {value: -800, units: ft/min}
+  loiter.fltcond|Ueas:          {value: 250, units: kn}
+  loiter.fltcond|vs:            {value: 0, units: ft/min}
+
+  # -------------------- Solver starting points --------------------
+  # The ground-roll phases integrate acceleration from a standstill, so their solver needs a
+  # true-airspeed guess rather than a schedule. Maximum takeoff weight is an *output* the box
+  # solves for; writing it here is choosing where Newton starts, not choosing the weight.
+  v0v1.fltcond|Utrue: {value: 100, units: kn}
+  v1vr.fltcond|Utrue: {value: 100, units: kn}
+  v1v0.fltcond|Utrue: {value: 100, units: kn}
+  ac|weights|MTOW:    {value: 50.0e3, units: kg}
+
+# ---------------------------------------------------------------------------------------------
+# Continuation
+# ---------------------------------------------------------------------------------------------
+# The design mission does not converge from a cold start. Each rung is converged in turn, so the
+# solver enters the next from a converged neighbour. This is the ladder B738_sizing.py walks
+# between its two `run_model()` calls, written as data rather than as statements.
+continuation:
+  - description: short range at low altitude, gentle descent
+    initial_conditions:
+      mission_range:      {value: 500, units: nmi}
+      cruise|h0:          {value: 5000, units: ft}
+      reserve_range:      {value: 100, units: nmi}
+      reserve|h0:         {value: 1000, units: ft}
+      descent.fltcond|vs: {value: -800, units: ft/min}
+
+  - description: design range and altitude, still with the gentle descent
+    initial_conditions:
+      descent.fltcond|vs: {value: -800, units: ft/min}
+
+# ---------------------------------------------------------------------------------------------
+# Driver, constraints and objective
+# ---------------------------------------------------------------------------------------------
+# What OpenConcept's optimizing examples write as add_constraint / add_objective calls.
+
+driver:
+  # IPOPT through pyOptSparse, not SciPy's SLSQP, for a specific reason: the black box is a
+  # Newton-solved implicit system, and an optimizer exploring a wide design space will
+  # eventually propose a design it cannot converge. OpenMDAO's pyOptSparse driver catches that
+  # and shortens its step; the SciPy driver re-raises, ending the run. SLSQP is supported and
+  # is the default because it is always available.
+  name: IPOPT
+  maxiter: 40
+  tol: 1.0e-6
+  derivative_mode: fwd   # few design variables, many vector responses
+
+constraints:
+  # The limit OpenConcept's own optimizing example expresses implicitly. B738_aerostructural.py
+  # writes `add_design_var("ac|geom|wing|AR", lower=5.0, upper=10.4)  # limit to fit in group III
+  # gate` -- an aspect-ratio bound standing in for a span limit, which only works because that
+  # example holds the wing area fixed. This study frees the area, so the same limit has to be said
+  # as what it actually is.
+  - name: wing_span
+    upper: 36.0
+    units: m
+    source: FAA Airplane Design Group III gate limit, 118 ft wingspan
+    title: Wingspan within the Group III gate
+
+  # A constraint that names both a regulation and a source appears in the traceability matrix
+  # as certification evidence. One that names neither is reported as a design constraint.
+  - name: takeoff_field_length
+    upper: 8000.0
+    units: ft
+    regulation: 14 CFR 25.113
+    source: Design field length, 8000 ft dry runway at sea level, ISA
+    title: Balanced field length within the runway available
+
+  - name: engine_out_climb_gradient
+    lower: 0.024
+    units: rad
+    regulation: 14 CFR 25.121(b)(1)(i)
+    source: Two-engine aeroplane, 2.4% second-segment minimum
+    title: OEI second-segment climb gradient
+
+  # Two-sided bands, written exactly as B738_aerostructural.py writes them:
+  #   prob.model.add_constraint("climb.throttle", lower=0.01, upper=1.05)
+  - name: climb_throttle
+    lower: 0.01
+    upper: 1.05
+    title: Climb throttle within the engine deck
+
+  - name: cruise_throttle
+    lower: 0.01
+    upper: 1.05
+    title: Cruise throttle within the engine deck
+
+objective:
+  # Fuel with reserves, not block fuel: sizing on block fuel designs an aeroplane that carries
+  # no diversion. `ref` scales it to order one, which SLSQP needs and IPOPT does not.
+  name: total_fuel
+  units: kg
+  sense: minimize
+  ref: 2.0e4
