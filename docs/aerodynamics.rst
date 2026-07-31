@@ -45,16 +45,6 @@ where the drag comes from, and in one case in whether the aeroplane is flown phy
      - OpenConcept's own
      - none possible
      - The reference. Drives ``B738SizingMissionAnalysis`` itself
-   * - ``b738_parity.yaml``
-     - cdadt group, polar
-     - off
-     - **Verification.** Reproduces the reference to 4e-13, which is what makes any later
-       difference attributable to physics. Wave drag is off because the reference has none
-   * - ``b738_polar.yaml``
-     - cdadt group, polar
-     - on
-     - **The control.** The same aeroplane flown completely, so a lattice can be compared against
-       it with only the induced-drag model differing
    * - ``b738_avl.yaml``
      - openavl lattice
      - on
@@ -64,18 +54,28 @@ where the drag comes from, and in one case in whether the aeroplane is flown phy
      - on
      - The same, through OpenConcept's own lattice, near-field
 
-Every one has an ``_optimization`` twin -- ``b738_optimization.yaml``,
-``b738_polar_optimization.yaml``, ``b738_avl_optimization.yaml`` and
-``b738_oas_optimization.yaml`` -- except ``b738_parity.yaml``, whose only job is to be compared
-against the reference. The twins differ from their sizing cases in three things and no others:
+Each has an ``_optimization`` twin -- ``b738_optimization.yaml``,
+``b738_avl_optimization.yaml`` and ``b738_oas_optimization.yaml``. Three sets of two: the aircraft
+configuration driven into the black box, and the same configuration with each of the two vortex
+lattices supplying the aerodynamic loads.
+
+The parity anchor is not among them, and deliberately so. :mod:`tests.test_adapter` builds it at
+run time from ``b738.yaml`` -- cdadt's analysis group, the parabolic polar, wave drag off -- and
+asserts it reproduces the reference to 4e-13. A verification case belongs where it is checked on
+every run, not in a directory where it depends on somebody remembering to run it. The twins differ from their sizing cases in three things and no others:
 eleven nodes rather than twenty-one, ``optimize:`` entries on five design variables, and the
 ``driver``, ``constraints`` and ``objective`` blocks at the end.
 
-Why the control exists is worth a sentence, because it is the difference between a number that
-means something and one that does not. The reference has no transonic drag rise anywhere and cannot
-be given any, so comparing a lattice against it nets an induced-drag saving against a drag-rise
-penalty and reports the two as one figure. Against ``b738_polar.yaml`` -- same compressibility, same
-everything -- a difference *is* the lattice.
+One caution about comparing against the reference, because it is the difference between a number
+that means something and one that does not. The reference has no transonic drag rise anywhere and
+cannot be given any, so a lattice measured against it nets an induced-drag saving against a
+drag-rise penalty and reports the two as one figure.
+
+Separating them takes one line: fly ``cdadt.models.polar:PolarLoads`` with ``wave_drag: true``, which
+shares the compressibility and differs from a lattice case only in where the induced drag comes from.
+Measured that way, the drag rise costs **+1.8%** of fuel and the lattice is worth **-8.1%**, against
+the -6.4% the two together show. No such case is shipped -- it answers a question about the models
+rather than about an aeroplane -- but it is worth running before quoting either number alone.
 
 Why cdadt needs its own analysis group
 --------------------------------------

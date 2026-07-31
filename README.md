@@ -143,14 +143,17 @@ code rather than taken on one solver's word. Switching is one line.
 | case | aerodynamics | wave drag | for |
 |---|---|---|---|
 | `b738.yaml` | OpenConcept's own | none possible | the reference |
-| `b738_parity.yaml` | cdadt group, polar | off | **verification** — reproduces the reference to 4e-13 |
-| `b738_polar.yaml` | cdadt group, polar | on | **the control** — a lattice differs from this by the lattice alone |
 | `b738_avl.yaml` | openavl | on | induced drag from the wing's shape |
 | `b738_oas.yaml` | OpenAeroStruct | on | the same, through OpenConcept's own lattice |
 
-Every one has an `_optimization` twin — `b738_optimization.yaml`, `b738_polar_optimization.yaml`,
-`b738_avl_optimization.yaml`, `b738_oas_optimization.yaml` — except `b738_parity.yaml`, which
-exists only to be checked against the reference and has nothing to optimize.
+Each has an `_optimization` twin: `b738_optimization.yaml`, `b738_avl_optimization.yaml` and
+`b738_oas_optimization.yaml`. Three sets of two — the aircraft configuration into the black box,
+and the same configuration with each of the two vortex lattices supplying the aerodynamic loads.
+
+The parity anchor is not a case file. `tests/test_adapter.py` builds it from `b738.yaml` at run
+time, swapping in cdadt's analysis group with the parabolic polar, and asserts it reproduces the
+reference to 4e-13. Keeping it in the suite rather than in `cases/` puts it where it is actually
+checked, instead of relying on someone running it.
 
 ```yaml
 black_box:
@@ -164,11 +167,12 @@ black_box:
 With the parabolic polar — the same equation OpenConcept evaluates — this path reproduces
 `run_738_sizing_analysis` to **4e-13**, which is what proves the machinery before new physics
 rides on it. With the lattice, which reports a span efficiency of 0.990 against the 0.82 the case
-file assumes, fuel with reserves falls 6.4% against the reference — but that figure nets two
-effects with opposite signs, because the reference has no transonic drag rise and cannot be given
-any. Against `b738_polar.yaml`, which shares the compressibility and differs only in where the
-induced drag comes from, the lattice alone is worth **−8.1%**; the drag rise costs **+1.8%**. Its
-geometry derivatives
+file assumes, fuel with reserves falls **6.4%** against the reference. Read that figure carefully:
+it nets two effects with opposite signs, because the reference has no transonic drag rise and cannot
+be given any. Flying the parabolic polar *with* drag rise separates them — the drag rise costs
+**+1.8%**, and the lattice alone is worth **−8.1%**. That is one line of a case file away
+(`aerodynamic_loads: cdadt.models.polar:PolarLoads` with `wave_drag: true`) and worth doing before
+quoting either number on its own. Its geometry derivatives
 are exact — `jax.jacrev` through openavl's own differentiable lattice, not a formula about it.
 Transonic drag rise is available too, from OpenConcept's own Korn-equation model, off by default so
 the reference example stays reproducible.

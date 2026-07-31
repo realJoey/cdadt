@@ -133,7 +133,7 @@ def test_the_case_table_describes_the_case_files_that_exist():
     table = re.findall(
         r"^\| `(b738[a-z_]*\.yaml)` \| ([^|]+?) \| ([^|]+?) \|", (ROOT / "README.md").read_text(encoding="utf-8"), re.M
     )
-    assert len(table) >= 5, f"the case table has shrunk to {len(table)} rows; is it still there?"
+    assert len(table) == 3, f"the case table should list the three sizing cases; found {len(table)}"
 
     mismatches = []
     for name, described, wave_claimed in table:

@@ -51,7 +51,7 @@ Against OpenConcept
      - **Installed rather than written.** cdadt supplies the sections from its planform and adds the
        result to the parasite drag. **On** wherever a lattice flies -- the mission cruises at M 0.7854
        and neither the lattice nor the parasite buildup carries a Mach term -- and off only in
-       ``b738_parity.yaml``, which has to reproduce a reference that has none. :mod:`tests.test_adapter`
+       the parity anchor in :mod:`tests.test_adapter`, which has to reproduce a reference that has none.
    * - Its own analysis group
      - The reference problem, again
      - The **parity anchor**: cdadt's group, cdadt's aircraft model, cdadt's loads component, flying
