@@ -19,8 +19,8 @@ The loop
 
    conda activate cdadt_env
 
-   pytest -q -m "not slow"      # the fast loop: 294 tests, about two minutes
-   pytest -q                    # everything: 356 tests, about nine minutes
+   pytest -q -m "not slow"      # the fast loop: 316 tests, about three minutes
+   pytest -q                    # everything: 380 tests, about twenty-four minutes
    pytest -q --cov=cdadt        # everything, with the coverage gate
    ruff check cdadt tests       # lint
    black cdadt tests            # format
@@ -41,7 +41,7 @@ What a change has to pass
    * - Gate
      - What it means
    * - ``pytest -q``
-     - All 356 pass. A test that is slow is marked ``slow``, not deleted.
+     - All 380 pass. A test that is slow is marked ``slow``, not deleted.
    * - ``pytest --cov=cdadt``
      - **100%** of statements and branches. ``fail_under = 100`` is in ``pyproject.toml``, so
        this fails the run rather than reporting a number. See :doc:`verification` for the two

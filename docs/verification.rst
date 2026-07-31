@@ -159,6 +159,60 @@ gradient, and adding thrust must shorten the field. All three hold.
 
 Tested by :mod:`tests.test_verification_derivatives`.
 
+Derivatives of the aerodynamics cdadt owns
+-------------------------------------------
+
+The study above differences the whole box, whose partials are OpenConcept's. The aerodynamic loads
+layer is cdadt's own code, so its derivatives are separately its own responsibility, and they are
+checked at two levels.
+
+**Component level.** :class:`~cdadt.adapter.loads.AerodynamicLoadsComp` is put through
+``check_partials``, and the jacobians are compared directly rather than through OpenMDAO's summary
+"rel error" field -- which reports infinity for one sparse-declared partial whose two jacobians are
+in fact identical to five figures. Worst measured disagreement 2.2e-6, against a finite-difference
+floor of about 1e-5: the component casts its inputs to ``float`` to build its value objects, which
+discards the imaginary part a complex step would need.
+
+**Model level, for the lattice.** The four geometry derivatives are exact, from ``jax.jacrev`` over
+openavl's own differentiable geometry rebuild, and are differenced through
+:meth:`~cdadt.adapter.avl.OpenAVLLoads.coefficients` so that what is checked is the derivative of the
+drag coefficient the mission consumes:
+
+.. list-table:: Exact vs central differences, shipped 737-800 wing at CL 0.5, M 0.6
+   :header-rows: 1
+   :widths: 25 25 25 25
+
+   * - Wing number
+     - Exact
+     - Relative error
+     - Was
+   * - Reference area
+     - 0 (asserted)
+     - --
+     - 0, correctly
+   * - Aspect ratio
+     - −8.85e-04
+     - 3e-07
+     - approximate, 1.8% low
+   * - Quarter-chord sweep
+     - −1.69e-06
+     - 3e-07
+     - **absent -- reported as zero**
+   * - Taper ratio
+     - −5.73e-04
+     - 1e-05
+     - **absent -- reported as zero**
+
+The two absences are the more serious half. Sweep and taper were inputs with no declared partial,
+which OpenMDAO reads as an assertion that the derivative is exactly zero -- so an optimizer free to
+change the taper of the wing would have been told it does not change the drag, and would have
+believed it. Neither the shipped sizing case nor the shipped optimization frees those variables, so
+nothing in the suite failed. That is why
+``test_the_component_declares_the_partials_the_installed_model_actually_has`` now checks the
+sparsity pattern itself rather than only the values in it.
+
+Tested by :mod:`tests.test_adapter`.
+
 Reproducibility: is the answer a property of the case, or of the route to it?
 ------------------------------------------------------------------------------
 
@@ -249,6 +303,21 @@ documented number to all printed digits -- MTOW 78345.6435 kg, fuel with reserve
 balanced field length 5247.7948 ft. The verification environment was then removed; the recipe,
 not the environment, is the artefact.
 
+.. warning::
+
+   **That rebuild predates the aerodynamics layer, and this page is not claiming otherwise.** It
+   was performed against a 310-test suite, before openavl, OpenAeroStruct and JAX were added --
+   each of which is installed by a step the recipe now *documents* but that has never been executed
+   from scratch and checked. The two are also installed with opposite flags for opposite reasons
+   (``--no-deps`` for openavl, plain for OpenAeroStruct), which is exactly the sort of instruction
+   that is easy to get wrong on a fresh machine.
+
+   What still holds without qualification: the environment currently in use runs all 380 tests green
+   at 100% coverage, and the three numbers above still reproduce to all printed digits. What is
+   *not* re-established is that ``environment.yml`` plus the documented extras rebuilds that
+   environment from nothing. Redoing it is a half-hour job and it should be redone before the
+   aerodynamics results are quoted anywhere they matter.
+
 What the suite establishes, by claim class
 -------------------------------------------
 
@@ -263,27 +332,30 @@ statement about what has actually been established:
      - Count
      - Claim
    * - ``unit``
-     - 226
+     - 235
      - One cdadt class behaves as specified, with no model built
    * - ``contract``
-     - 17
-     - The cdadt/OpenConcept boundary and the ownership map hold. Every mandatory rule about the
-       dependency has one: not subclassed, not modified, not copied, not patched, and not
-       imported outside the one wrapper package -- which the physics in ``cdadt.models`` also
-       may not do
+     - 21
+     - The dependency boundaries and the ownership map hold. Every mandatory rule about a
+       dependency has one: not subclassed, not modified, not copied, not patched, not imported
+       outside the one wrapper package -- which the physics in ``cdadt.models`` also may not do --
+       and, for OpenAeroStruct, not imported *anywhere*, because it is reached through OpenConcept.
+       Each of the three clones is separately checked to carry no uncommitted change
    * - ``integration``
-     - 54
+     - 55
      - A real model builds, converges and is driven -- OpenConcept's, or for two of them a
        stand-in built to check what OpenMDAO accepts and keeps
    * - ``verification``
      - 39
      - The equations are solved right: grid, solver, derivatives, reproducibility, optimality, consistency
    * - ``validation``
-     - 20
-     - The right equations were solved: against the reference example, and against physical reality
+     - 30
+     - The right equations were solved: against the reference example, against the numbers each
+       dependency publishes, against the other dependency's vortex lattice, and against physical
+       reality. :doc:`truth` maps which artefact anchors what
    * - **total**
-     - **356**
-     - ~9 minutes; ``-m "not slow"`` runs 294 of them in about two
+     - **380**
+     - ``-m "not slow"`` runs 316 of them in about three minutes
 
 Coverage
 --------

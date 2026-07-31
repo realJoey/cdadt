@@ -12,6 +12,9 @@ same place.
 What is established
 -------------------
 
+Which dependency artefact is the truth reference for each thing cdadt does is tabulated separately,
+in :doc:`truth` -- including the rows that are empty and why.
+
 **cdadt reproduces OpenConcept's own B738 sizing example exactly.**
 
 :mod:`tests.test_validation` imports ``openconcept.examples.B738_sizing.run_738_sizing_analysis``
@@ -21,6 +24,13 @@ is 1e-6 relative -- the Newton solver's own convergence, not an engineering tole
 
 The reference is run, not quoted. A table of numbers pasted from a previous session tests only
 that nobody edited the table.
+
+**And separately, cdadt matches the numbers OpenConcept publishes.** Running the example live proves
+cdadt drives the box faithfully, but it cannot catch the two of them drifting together: a regression
+in the dependency would move the reference with it. So the three literals
+``B738SizingTestCase`` defends -- 35,213.767 lbm block fuel, 40,991.188 lbm total fuel and
+172,711.303 lbm MTOW, at OpenConcept's own ``num_nodes=5`` and its own 1e-4 tolerance -- are checked
+too. Measured agreement **1.3e-6**. That test did not exist until the truth map was drawn.
 
 Twenty-two quantities are compared, including weights, geometry, maximum lift coefficients, the
 structural weight breakdown, field length, decision and safety speeds, the climb gradient, both
@@ -127,8 +137,63 @@ study end to end and asserts that the driver converged, that no constraint is vi
 the objective actually improved, that the mission is still flown, and that the field length is
 still balanced at the optimum.
 
+**The vortex-lattice aerodynamics is self-consistent with openavl, by four independent checks.**
+:class:`~cdadt.adapter.avl.OpenAVLLoads` is not validated against a wind tunnel -- see the caution
+below -- but every claim it makes about openavl is checked against openavl:
+
+- **The polar is paired with the right coefficients.** The fitted curvature equals
+  :math:`1/(\\pi e A\\!R)` with the span efficiency openavl itself reports, to **1.6e-15**. This is
+  the check that catches a far-field drag read against a near-field lift, which is a 2.2% error
+  that changes nothing visible.
+- **The closed form is exact, not a fit.** At three angles of attack the fit never sampled, it
+  reproduces the lattice to **1e-12** relative or better.
+- **Two openavl code paths agree.** The values come from ``compute_forces`` over a geometry rebuilt
+  inside JAX; ``AVLSolver`` reaches the same numbers to better than **1e-6**. That matters because
+  the function cdadt reads is one openavl validates itself: its
+  ``test_compute_forces_trefftz_not_double_symmetrized`` is marked ``reference`` -- openavl's own
+  marker for *"numerically validated against Fortran binaries or AVL run-case outputs"* -- and it
+  asserts ``compute_forces``'s ``CLFF``, ``CYFF`` and ``CDFF`` against its NumPy ``tpforc``. So the
+  chain from AVL's published behaviour to the number in cdadt's mission is covered end to end, each
+  link by whichever project owns it.
+- **The geometry derivatives are exact.** All four wing numbers, differenced through the model as
+  installed, agree with ``jax.jacrev`` to 3e-7 (aspect ratio, sweep) and 1e-5 (taper).
+
+And one check against theory rather than against the dependency: a planar rectangular wing must come
+out just below elliptical efficiency, since elliptical loading is optimal, and it does.
+
+Tested by :mod:`tests.test_adapter`.
+
 What this does **not** establish
 --------------------------------
+
+**Wave drag is available but off by default.** This page previously said no path through cdadt
+modelled it at all, which was half wrong and is worth recording as such. A vortex lattice indeed has
+no mechanism for shock drag -- what Mach reaches openavl is a Prandtl-Glauert correction, nothing
+more -- and ``openconcept/aerodynamics/drag_jet_transport.py`` carries no Mach term either. But
+OpenConcept **does** ship a wave drag model, ``WaveDragFromSections``, a Korn-equation formulation
+verified against OpenAeroStruct by OpenConcept's own tests; it lives under
+``aerodynamics/openaerostruct/``, which is why reading only the buildup the B738 example uses missed
+it.
+
+cdadt now installs that component, off by default. Off, because ``B738AircraftModel`` has none, so an
+aircraft that added it unasked could not reproduce the reference example and the parity anchor would
+be gone. **So the shipped case is still flown without transonic drag rise** -- at M 0.785, above the
+drag-rise Mach of a real wing of that sweep -- and its absolute drag is optimistic in cruise by that
+amount. Turning it on costs 1.8% more fuel and 0.6% more MTOW. A study that moves sweep or thickness
+should turn it on, since those are the variables whose transonic effect is otherwise absent.
+
+**The lattice sees a wing alone.** No fuselage, no nacelles, no tails, no interference. The parasite
+drag is still OpenConcept's component buildup, so the two models are composed rather than one
+replacing the other, and the induced drag is the only part that is cdadt's.
+
+**No experimental validation.** Nothing on this page compares either aerodynamic model against wind
+tunnel or flight data. The vortex-lattice results are what this lattice predicts for this planform.
+
+**cdadt's wing is a simplification of the aeroplane, and an optimistic one.** openavl ships its own
+reference model of the 737-800 -- twist, dihedral, a kink, a real airfoil, control surfaces -- and it
+reports a span efficiency of 0.928 against the 0.990 cdadt's two untwisted sections give. Sizing on
+0.928 instead carries 2.3% more fuel, which turns the −8.0% lattice saving into roughly −5.7%. The
+lattice number is a bound, not a prediction. :doc:`truth` has the measurement.
 
 **It says nothing about whether OpenConcept's model is right.** Agreement to 1e-6 means cdadt
 drives the box correctly. The physics is OpenConcept's: empirical drag and weight buildups, a
@@ -212,7 +277,7 @@ How to re-establish all of this
 
 .. code-block:: bash
 
-   pytest -q                    # 184 tests, ~3.5 minutes
+   pytest -q                    # the whole suite; see :doc:`verification` for the count and timing
    pytest -q -m validation      # this page: the live reference and the physical checks
    pytest -q -m verification    # grid, solver, derivatives, reproducibility, optimality
    pytest -q -m contract        # the boundary

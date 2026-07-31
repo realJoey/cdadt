@@ -16,13 +16,15 @@ cdadt inspect  cases/b738.yaml
 ## Three claims, all enforced by the test suite
 
 **OpenConcept is a black box, and exactly one package may open it.** The sizing analysis is named
-in the case file as `module:ClassName` and loaded at run time. Six contract tests hold the
+in the case file as `module:ClassName` and loaded at run time. Sixteen contract tests hold the
 boundary — OpenConcept is not subclassed, not modified, not **copied**, not **patched**, and not
 imported anywhere outside `cdadt.adapter`, the one wrapper package. The copy and patch checks
 matter because they are the ways of taking a dependency's behaviour the others would not notice: a
 copy has no import to find and leaves the clone spotless, and a patch leaves both sources
-untouched. The sixth holds the other half — `cdadt.models`, where cdadt's own physics lives,
-imports neither dependency, so a model stays testable without them.
+untouched. Others hold the rest: `cdadt.models`, where cdadt's own physics lives, imports no
+dependency at all, so a model stays testable without them; OpenAeroStruct is reached only *through*
+OpenConcept and may not be imported by any cdadt module, adapter included; and each of the three
+clones is separately checked to carry no uncommitted change.
 
 **Every discipline is a class.** Geometry, aerodynamics, propulsion, stability, structures,
 weights and performance are classes with encapsulated state. Each owns exactly one slice of the
@@ -37,6 +39,92 @@ run script. A variable becomes free for the optimizer by gaining an `optimize:` 
 already declared, so two studies that ask different questions of the same aeroplane differ only
 in data — and never disagree about a number.
 
+## How a run flows
+
+```mermaid
+flowchart TD
+    YAML["cases/b738.yaml<br/><i>one file = one study</i>"] --> CFG[Config<br/>validated, unknown keys refused]
+    CFG --> SA["SizingAnalysis<br/><i>the coordinator</i>"]
+    SA --> AC["Aircraft<br/>7 disciplines, disjoint ownership"]
+    SA --> PF["Performance<br/>initial conditions + continuation ladder"]
+    SA --> CB["CertificationBasis<br/>14 CFR Part 25"]
+    AC --> BOX
+    PF --> BOX
+    BOX["OpenConceptSizingBox<br/><i>loaded by name, never imported</i>"] --> MISSION
+    MISSION["FullMissionWithReserve<br/>balanced field · climb · cruise · descent · reserve · loiter"]
+    MISSION -->|"Newton: MTOW ↔ fuel"| MISSION
+    MISSION --> RES[SizingResults]
+    CB --> RES
+    RES --> OUT["run_outputs/&lt;case&gt;_&lt;stamp&gt;_out/<br/>report.txt · results.json · n2.html · 3 figures"]
+```
+
+Every phase of the mission instantiates one **aircraft model**. That is the seam cdadt opens: the
+drag becomes cdadt's, everything else stays OpenConcept's.
+
+```mermaid
+flowchart LR
+    subgraph phase["one mission phase"]
+        FC["fltcond|CL, q, M, h<br/>throttle, ac|…"]
+    end
+    subgraph cdadt["cdadt — the drag"]
+        CD0["ParasiteDragCoefficient<br/>+ optional WaveDragFromSections"] --> COMP
+        COMP["AerodynamicLoadsComp<br/>drag = C_D · q · S"]
+    end
+    subgraph oc["OpenConcept — the rest, unmodified"]
+        ENG["RubberizedTurbofan<br/>→ thrust, fuel flow"] --> W["Integrator → fuel<br/>→ weight"]
+    end
+    FC --> CD0
+    FC --> ENG
+    COMP -->|drag| phase
+    W -->|"thrust, weight"| phase
+```
+
+The loads model behind `AerodynamicLoadsComp` is named in the case file and knows nothing about
+OpenMDAO, OpenConcept or the mission:
+
+```mermaid
+flowchart TD
+    ABC["AerodynamicLoads<br/><i>cdadt.models — imports no dependency</i>"]
+    ABC --> P["PolarLoads<br/>C_D = C_D0 + C_L²/πeAR"]
+    ABC --> A["OpenAVLLoads"]
+    ABC --> O["OpenAeroStructLoads"]
+    A --> LS
+    O --> LS
+    LS["LatticeSolver<br/><i>fit() → LatticePolar</i>"]
+    LS --> DL["DifferentiableLattice"] --> AVL[(openavl)]
+    LS --> OL["OpenAeroStructLattice"] --> OCX[(OpenConcept →<br/>OpenAeroStruct)]
+    LS -.->|solved polars, one per study| LIB["LatticeLibrary<br/><i>injected, never global</i>"]
+```
+
+## Lift goes in, drag comes out
+
+OpenConcept's mission is a **point-mass trajectory** — `alpha` appears **zero times** in its
+`phases.py` and `profiles.py`. So lift is not an aerodynamic result; it is a kinematic requirement,
+and the mission solves vertical equilibrium for it:
+
+```
+C_L = cos(γ) · g · W / (q · S_ref)
+```
+
+The aerodynamics is then asked the only question left: **what does that lift cost?** Feeding lift
+*in* would over-determine the system — the mission states `C_L` from equilibrium, a lattice states
+`C_L(α)` from the flow, and there is no free variable between them. The missing one is angle of
+attack; adding it plus the residual `C_L_lattice(α) − C_L_required = 0` is what a **trim solve** is,
+and it is the point at which the other five coefficients start to matter.
+
+Both lattices are parameterised by α internally and the polar fit *inverts* that, producing
+`C_D(C_L)`. That inversion is why cdadt's aerodynamics drops into a point-mass mission at all.
+
+| | produced by `PolarLoads` | produced by the lattices | consumed by the mission |
+|---|---|---|---|
+| `CL` lift | echoed | echoed | **input, not output** |
+| `CD` drag | yes | yes | **yes** → drag force |
+| `CY` `Cl` `Cm` `Cn` | no | yes | no consumer yet |
+
+`AeroCoefficients` carries all six on purpose: the interface is shaped for what a lattice *is*, not
+for what today's black box wants, so a trim residual or a static-margin constraint is a new consumer
+rather than a new interface.
+
 ## The black box is the only one it could have been
 
 `B738SizingMissionAnalysis` is the **sole** analysis in OpenConcept's ~30,000 lines of source that combines
@@ -47,22 +135,35 @@ result, not a preference — see `docs/openconcept.rst`.
 ## Your own aerodynamics, inside their mission
 
 The drag can be cdadt's. `cases/b738_cdadt_aero.yaml` flies the same aeroplane and the same
-mission with a vortex lattice built on its wing by [openavl](https://github.com/danielenriquez59/openavl),
-while the trajectory, balanced field, reserves, engine deck and weight closure stay OpenConcept's.
-Switching is one line of the case file.
+mission with a vortex lattice built on its wing, while the trajectory, balanced field, reserves,
+engine deck and weight closure stay OpenConcept's. **Two lattices are available behind one
+interface** — openavl, and OpenConcept's own OpenAeroStruct — so the aerodynamics can be checked
+against an independent code rather than taken on one solver's word. Switching is one line.
 
 ```yaml
 black_box:
   model: cdadt.adapter.analysis:SizingMissionAnalysis
   options:
-    aerodynamic_loads: cdadt.adapter.avl:OpenAVLLoads    # or cdadt.models.polar:PolarLoads
+    aerodynamic_loads: cdadt.adapter.avl:OpenAVLLoads
+    #                  cdadt.adapter.oas:OpenAeroStructLoads
+    #                  cdadt.models.polar:PolarLoads
 ```
 
 With the parabolic polar — the same equation OpenConcept evaluates — this path reproduces
 `run_738_sizing_analysis` to **4e-13**, which is what proves the machinery before new physics
 rides on it. With the lattice, which reports a span efficiency of 0.990 against the 0.82 the case
-file assumes, fuel with reserves falls 7.6% and the balanced field 5.6%. Read
-`docs/aerodynamics.rst` for what that is and is not evidence of.
+file assumes, fuel with reserves falls 8.0% and the balanced field 5.9%. Its geometry derivatives
+are exact — `jax.jacrev` through openavl's own differentiable lattice, not a formula about it.
+Transonic drag rise is available too, from OpenConcept's own Korn-equation model, off by default so
+the reference example stays reproducible.
+
+Every one of those numbers is anchored to something a dependency publishes rather than to cdadt's
+own consistency: **0.67%** against OpenConcept's own vortex lattice on the same wing, **1.3e-6**
+against the literals OpenConcept's test suite defends, and **1.6e-15** on the identity that ties the
+fitted polar to openavl's own span efficiency. `docs/truth.rst` is the map of what is checked
+against what — including the rows that are empty, and why. Read `docs/aerodynamics.rst` for what the
+lattice result is and is not evidence of; it is the optimistic end of a range, and the range is
+measured.
 
 ## Verified: the equations are solved right
 
@@ -72,7 +173,7 @@ file assumes, fuel with reserves falls 7.6% and the balanced field 5.6%. Read
 | **Total derivatives** | Agree with finite differences to **1.1e-4**, with the textbook truncation/round-off minimum at step 1e-6 |
 | **Solver tolerance** | Every tolerance probed down to **1e-12** is reachable on every grid, so the shipped 1e-9 has three decades of margin |
 | **Reproducibility** | Three different continuation ladders reach the same aircraft to **1e-7**; reruns are bit-identical |
-| **Environment** | Rebuilt from scratch out of `environment.yml`; the suite passes and every number reproduces |
+| **Environment** | Rebuilt from scratch out of `environment.yml`; the suite passed and every number reproduced — **but that rebuild predates the aerodynamics layer**, see `docs/verification.rst` |
 | **Optimality** | No feasible ±2% perturbation of any design variable improves the objective |
 | **Coverage** | **100%** of statements and branches, enforced; no exclusion list, and the two `# pragma: no cover` lines are named in `docs/verification.rst` |
 
@@ -161,8 +262,8 @@ cdadt inspect cases/b738.yaml --what inputs       # what the box accepts
 # every run writes run_outputs/<case>_<stamp>_out/ with the report, the numbers,
 # the N2, three figures, OpenMDAO's own reports and the optimizer's log
 
-pytest -q -m "not slow"                           # the fast loop, 294 tests, ~2 min
-pytest -q                                         # 356 tests, ~9 min
+pytest -q -m "not slow"                           # the fast loop, 316 tests, ~3 min
+pytest -q                                         # 380 tests, ~24 min
 pytest -q --cov=cdadt                             # and 100% statement + branch coverage
 pytest -q -m verification                         # grid, derivatives, solver, reproducibility
 pytest -q -m validation                           # reference match + physical checks

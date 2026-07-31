@@ -23,6 +23,15 @@ Then install OpenConcept and cdadt, in that order:
    pip install -e /path/to/openconcept --no-deps
    pip install -e ".[dev,docs]"
 
+That is the whole of what the suite needs. Two optional extras add the aerodynamics cdadt owns; see
+:doc:`aerodynamics` for both, and note that they take **opposite** flags for reasons given there:
+
+.. code-block:: bash
+
+   pip install "jax<0.5" "jaxlib<0.5"
+   pip install -e /path/to/openavl --no-deps        # --no-deps: it declares numpy>=2.4
+   pip install -e /path/to/OpenAeroStruct           # with deps: all its floors are satisfied
+
 Why each of those flags is there
 --------------------------------
 

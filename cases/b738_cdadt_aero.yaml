@@ -13,7 +13,8 @@
 #   black_box.model            -> cdadt.adapter.analysis:SizingMissionAnalysis
 #   black_box.options.aerodynamic_loads -> which AerodynamicLoads to fly with
 #
-# Two models ship:
+# Three models ship, and switching between them changes one line and nothing else -- which is the
+# point of the abstraction:
 #
 #   cdadt.models.polar:PolarLoads     the parabolic polar. Deliberately the same equation
 #                                     OpenConcept evaluates, so this case reproduces
@@ -23,15 +24,42 @@
 #   cdadt.adapter.avl:OpenAVLLoads    a vortex lattice, via openavl. Builds the wing below as a
 #                                     lattice and fits its drag polar from it, so the induced
 #                                     drag comes from the geometry rather than an assumed span
-#                                     efficiency. Needs the optional extra: pip install -e ".[avl]"
+#                                     efficiency. Reads openavl's Trefftz-plane far-field drag,
+#                                     which is the physically admissible one on a swept wing.
+#                                     Needs: pip install -e ".[avl]"
 #
-# Switching between them changes one line and nothing else, which is the point of the abstraction.
+#   cdadt.adapter.oas:OpenAeroStructLoads
+#                                     the same idea through OpenConcept's own OpenAeroStruct
+#                                     lattice, on a mesh built from the same four wing numbers.
+#                                     Reads near-field drag, because that is all its VLM
+#                                     publishes, so it runs about 4% optimistic on induced drag.
+#                                     Its value is as an independent second opinion: the two
+#                                     codes agree to 0.67% compared like for like.
+#                                     Needs: pip install -e ".[transonic]"
+#
+# The two lattices are not interchangeable and docs/truth.rst says exactly how they differ. Having
+# both is what makes cdadt's aerodynamics a checkable claim rather than one code's word for it.
 # =============================================================================================
 
 black_box:
   model: cdadt.adapter.analysis:SizingMissionAnalysis
   options:
+    # The parabolic polar ships as the default here because it needs no optional extra and because
+    # it is the anchor. To fly the vortex lattice instead, replace the line below with:
+    #
+    #   aerodynamic_loads: cdadt.adapter.avl:OpenAVLLoads    # openavl, far-field
+    #   aerodynamic_loads: cdadt.adapter.oas:OpenAeroStructLoads   # OpenConcept's own lattice
+    #
+    # and nothing else in this file changes. `ac|aero|polar|e` below then becomes an unused
+    # assumption -- the lattice computes the span efficiency rather than reading it, and reports
+    # 0.990 for this wing against the 0.801 stated.
     aerodynamic_loads: cdadt.models.polar:PolarLoads
+    # Transonic drag rise, from OpenConcept's own Korn-equation WaveDragFromSections. Off here for
+    # the same reason: with it off this case reproduces the reference example, and OpenConcept's own
+    # B738AircraftModel has no wave drag either. Turn it on for a study that moves sweep or
+    # thickness -- those are the variables whose transonic effect is otherwise missing. It costs
+    # 1.8% more fuel on this mission, and needs OpenAeroStruct installed.
+    wave_drag: false
   num_nodes: 21          # must be odd: the box integrates fuel burn with Simpson's rule
 
 solver:

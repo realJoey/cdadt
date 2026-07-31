@@ -82,6 +82,7 @@ binds. See :doc:`optimization` and, for what is *not* established, :doc:`validat
 
    verification
    validation
+   truth
 
 .. toctree::
    :maxdepth: 2

@@ -8,6 +8,10 @@ Adapter
    :members:
    :show-inheritance:
 
+.. automodule:: cdadt.adapter.sections
+   :members:
+   :show-inheritance:
+
 .. automodule:: cdadt.adapter.aircraft
    :members:
    :show-inheritance:
@@ -17,5 +21,13 @@ Adapter
    :show-inheritance:
 
 .. automodule:: cdadt.adapter.avl
+   :members:
+   :show-inheritance:
+
+.. automodule:: cdadt.adapter.lattice
+   :members:
+   :show-inheritance:
+
+.. automodule:: cdadt.adapter.oas
    :members:
    :show-inheritance:

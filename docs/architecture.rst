@@ -29,6 +29,19 @@ The layers
      |
      +-- OpenConceptSizingBox   the black box: loaded by name, set, converged, read
            |                      RunDirectory decides where its problem writes
+           |
+           +-- cdadt.models      physics cdadt owns. OpenMDAO and numpy only; imports no dependency
+           |     AerodynamicLoads    the pluggable slot -- coefficients from a flight condition
+           |     PolarLoads          a parabolic polar; reproduces the reference exactly
+           |     TrapezoidalPlanform the case file's four wing numbers -> lifting surface
+           |
+           +-- cdadt.adapter     the only package that may import a dependency
+                 AerodynamicLoadsComp  evaluates a loads model over a phase, publishes `drag`
+                 DifferentiableLattice openavl, and the exact geometry Jacobian
+                 OpenAVLLoads          that lattice as an AerodynamicLoads
+                 WingSectionsComp      the planform as sections, for OpenConcept's wave drag
+                 CdadtAircraftModel    cdadt's drag + OpenConcept's engine and weights
+                 SizingMissionAnalysis installs it into FullMissionWithReserve
    SizingAnalysis            builds, converges, reads -> SizingResults
      |                         the coordinator; every collaborator is injectable
    Optimizer                 declares design variables, objective and CertificationBasis,
@@ -43,11 +56,120 @@ supplies a :class:`~cdadt.blackbox.RunDirectory`, and therefore the only one tha
 to be written to disk in a place of cdadt's choosing. See
 :doc:`artifacts`.
 
-The arrangement is open/closed in three places, each tested rather than asserted: a new
+The arrangement is open/closed in four places, each tested rather than asserted: a new
 discipline is a new :class:`~cdadt.disciplines.base.Discipline` passed to ``Aircraft``, a new
-command is a new :class:`~cdadt.cli.Command` passed to ``CommandLineInterface``, and a new black
-box is a different ``model:`` line in the case file. None of the three requires editing anything
-that already exists.
+command is a new :class:`~cdadt.cli.Command` passed to ``CommandLineInterface``, a new black
+box is a different ``model:`` line in the case file, and a new aerodynamics is a new
+:class:`~cdadt.models.loads.AerodynamicLoads` named in that case file's options. None of the four
+requires editing anything that already exists.
+
+One run, end to end
+-------------------
+
+What actually happens when ``cdadt size cases/b738.yaml`` is typed. Read it downwards; the only loop
+is the one marked, and it is the weight closure.
+
+.. code-block:: text
+
+   cases/b738.yaml
+        |
+        |  Config.from_dict -- every section validated, unknown keys refused
+        v
+   +-------------------------------------------------------------------------+
+   |  SizingAnalysis          the coordinator; collaborators injected         |
+   |                                                                         |
+   |   Aircraft ---> 7 disciplines, each owning one slice of the ac| names    |
+   |   Performance -> initial conditions + the continuation ladder           |
+   |   CertificationBasis -> the regulations this study is judged against    |
+   +-------------------------------------------------------------------------+
+        |  writes ac| values, seeds, solver settings
+        v
+   +-------------------------------------------------------------------------+
+   |  OpenConceptSizingBox     loaded by name from the case file              |
+   |                                                                         |
+   |    +------------------------------------------------------------+       |
+   |    |  the analysis group  (OpenConcept's, or cdadt's own)        |       |
+   |    |                                                            |       |
+   |    |   geometry -> tails, wetted areas, MAC                      |       |
+   |    |   maximum lift -> CLmax clean and flapped                   |       |
+   |    |   empty weight -> OEW                                       |       |
+   |    |                                                            |       |
+   |    |   FullMissionWithReserve                                    |       |
+   |    |     v0v1 v1v0 v1vr rotate | climb cruise descent | reserve  |       |
+   |    |       balanced field      |    design mission     | loiter  |       |
+   |    |                                                            |       |
+   |    |     each phase instantiates ONE aircraft model per phase:   |       |
+   |    |       B738AircraftModel        (OpenConcept's)              |       |
+   |    |       CdadtAircraftModel       (cdadt's -- see below)       |       |
+   |    +------------------------------------------------------------+       |
+   |                      ^                              |                   |
+   |                      '---- Newton: MTOW <-> fuel ---'  <== the one loop  |
+   +-------------------------------------------------------------------------+
+        |  read back by name, in declared units
+        v
+   SizingResults -> ResponseCatalog -> report.txt, results.json, 3 figures, n2.html
+
+Inside one phase, when the aerodynamics is cdadt's:
+
+.. code-block:: text
+
+   phase gives:  fltcond|CL  fltcond|q  fltcond|M  fltcond|h  throttle  ac|...
+                      |          |          |          |         |
+      +---------------+----------+----------+----------+         |
+      |                                                          |
+      v                                                          v
+   +--------------------------------+                  +------------------------+
+   |  cdadt: the drag               |                  |  OpenConcept: the rest |
+   |                                |                  |                        |
+   |  ParasiteDragCoefficient  CD0  |                  |  RubberizedTurbofan    |
+   |  [+ WaveDragFromSections] --.  |                  |    -> thrust, fuel flow|
+   |                             v  |                  |  Integrator -> fuel    |
+   |  AerodynamicLoadsComp          |                  |  AddSubtract -> weight |
+   |    builds a planform           |                  +------------------------+
+   |    builds the loads model      |                            |
+   |    model.coefficients() -> CD  |                            |
+   |    drag = CD * q * S           |                            |
+   +--------------------------------+                            |
+                     |                                           |
+                     v                                           v
+                   drag                                 thrust, weight
+                     '----------> back to the phase <-----------'
+
+The loads model itself is chosen by the case file and knows nothing about any of this:
+
+.. code-block:: text
+
+   AerodynamicLoads                     (cdadt.models -- imports no dependency)
+     |
+     +-- PolarLoads                     CD = CD0 + CL^2 / (pi e AR)
+     |
+     +-- OpenAVLLoads                   (cdadt.adapter) -.
+     |                                                    >-- LatticeSolver
+     +-- OpenAeroStructLoads            (cdadt.adapter) -'      |
+                                                                +-- DifferentiableLattice --> openavl
+                                                                +-- OpenAeroStructLattice --> OpenConcept -> OpenAeroStruct
+                                                                      |
+                                                            LatticeLibrary: solved polars,
+                                                            one per study, injected, never global
+
+Why the physics is split in two
+-------------------------------
+
+:mod:`cdadt.models` and :mod:`cdadt.adapter` look like one layer and are deliberately two.
+
+A **discipline** is an interface *to* the box: it owns a slice of the variable namespace, computes
+nothing, and that invariant is what the ownership tests enforce. A **model** is physics installed
+*into* the box: it computes, and it is chosen per study. Neither could absorb the other without
+losing the property that makes it useful.
+
+The split inside the physics is by dependency, not by subject. :mod:`cdadt.models` imports neither
+OpenConcept nor openavl, so a loads model can be written, differentiated and tested on a machine
+with neither installed -- and a contract test enforces it. :mod:`cdadt.adapter` is the one package
+allowed to import a dependency, because installing cdadt's aerodynamics into OpenConcept's mission
+means composing OpenConcept's propulsion and weight blocks around it, and an aircraft model must be
+an OpenMDAO group OpenConcept instantiates. That exemption is one package wide and is the whole of
+it. See :doc:`aerodynamics` for the layer itself and :doc:`truth` for what each part is validated
+against.
 
 What a discipline is
 --------------------
