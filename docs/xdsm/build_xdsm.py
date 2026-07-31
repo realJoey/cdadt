@@ -254,8 +254,13 @@ class Renderer:
         command = (
             [self._engine, "--outdir", str(stem.parent), str(stem.with_suffix(".tex"))]
             if Path(self._engine).stem == "tectonic"
-            else [self._engine, "-interaction=nonstopmode", "-output-directory", str(stem.parent),
-                  str(stem.with_suffix(".tex"))]
+            else [
+                self._engine,
+                "-interaction=nonstopmode",
+                "-output-directory",
+                str(stem.parent),
+                str(stem.with_suffix(".tex")),
+            ]
         )
         if subprocess.run(command, capture_output=True, cwd=stem.parent).returncode or not pdf.is_file():
             return produced
