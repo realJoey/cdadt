@@ -19,3 +19,11 @@ run_outputs/
 IPOPT.out
 SLSQP.out
 .ruff_cache/
+
+# pyXDSM intermediates. The .tex and .tikz are the artefacts and are committed; the PDF and the
+# LaTeX build litter are not, because no PDF was produced here and committing one would claim a
+# render nobody checked.
+docs/xdsm/*.pdf
+docs/xdsm/*.aux
+docs/xdsm/*.log
+docs/xdsm/*.out

@@ -43,6 +43,10 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest", "pytest-cov", "black", "ruff"]
 docs = ["sphinx", "sphinx_rtd_theme", "numpydoc"]
+# The XDSM figures under docs/xdsm/. pyXDSM emits LaTeX/TikZ and shells out to pdflatex, so
+# rendering a PDF needs a LaTeX installation that this extra cannot provide; without one the
+# build writes the .tex, which is the source a thesis would input anyway.
+xdsm = ["pyxdsm>=2.3"]
 plot = ["matplotlib"]
 # The vortex-lattice aerodynamics. openavl is not on PyPI, so it is installed from a clone; see
 # docs/aerodynamics.rst, which also explains why its own dependencies must not be installed

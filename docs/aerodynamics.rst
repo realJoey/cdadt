@@ -77,6 +77,14 @@ Measured that way, the drag rise costs **+1.8%** of fuel and the lattice is wort
 the -6.4% the two together show. No such case is shipped -- it answers a question about the models
 rather than about an aeroplane -- but it is worth running before quoting either number alone.
 
+XDSM: what feeds what
+----------------------
+
+:doc:`xdsm` draws all three sets as design structure matrices -- components on the diagonal, the
+variables passing between them off it. Worth reading before this page, because the direction of one
+connection explains most of what follows: the mission supplies :math:`C_L` *to* the loads model and
+takes only :math:`D` back.
+
 Why cdadt needs its own analysis group
 --------------------------------------
 

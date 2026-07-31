@@ -1,0 +1,193 @@
+
+%%% Preamble Requirements %%%
+% \usepackage{geometry}
+% \usepackage{amsfonts}
+% \usepackage{amsmath}
+% \usepackage{amssymb}
+% \usepackage{tikz}
+
+% Optional packages such as sfmath set through python interface
+% \usepackage{sfmath}
+
+% \usetikzlibrary{arrows,chains,positioning,scopes,shapes.geometric,shapes.misc,shadows}
+
+%%% End Preamble Requirements %%%
+
+\input{"C:/Users/joeyg/anaconda3/envs/cdadt_env/Lib/site-packages/pyxdsm/diagram_styles"}
+\begin{tikzpicture}
+
+\matrix[MatrixSetup]{
+%Row 0
+&
+&
+\node [DataIO] (output_cdadt) {$\text{case file}$};&
+&
+&
+&
+&
+&
+&
+&
+\\
+%Row 1
+&
+\node [Optimization] (opt) {$\text{IPOPT}$};&
+\node [DataInter] (opt-cdadt) {$S_{ref}, A\!R, \Lambda_{c/4}, \lambda, T$};&
+&
+&
+&
+&
+&
+&
+&
+\\
+%Row 2
+&
+&
+\node [Function] (cdadt) {$\begin{array}{c}\text{cdadt} \\ \text{disciplines}\end{array}$};&
+\node [DataInter] (cdadt-newton) {$\texttt{ac|}\text{ variables}$};&
+&
+&
+&
+&
+&
+&
+\\
+%Row 3
+&
+&
+&
+\node [MDA] (newton) {$\begin{array}{c}\text{Newton} \\ \text{weight closure}\end{array}$};&
+\node [DataInter] (newton-geom) {$S_{ref}, A\!R, \lambda$};&
+&
+&
+&
+\node [DataInter] (newton-mission) {$\text{MTOW}$};&
+&
+\\
+%Row 4
+&
+&
+&
+&
+\node [Function] (geom) {$\begin{array}{c}\text{OpenConcept} \\ \text{geometry, tails}\end{array}$};&
+\node [DataInter] (geom-weights) {$\text{MAC}, S_{wet}, S_{h}, S_{v}$};&
+\node [DataInter] (geom-loads) {$S_{ref}, A\!R, \Lambda_{c/4}, \lambda$};&
+&
+&
+&
+\\
+%Row 5
+&
+&
+&
+&
+&
+\node [Function] (weights) {$\begin{array}{c}\text{OpenConcept} \\ \text{empty weight}\end{array}$};&
+&
+&
+\node [DataInter] (weights-mission) {$\text{OEW}$};&
+&
+\\
+%Row 6
+&
+&
+&
+&
+&
+&
+\node [Function] (loads) {$\begin{array}{c}\text{cdadt} \\ \text{AerodynamicLoadsComp}\end{array}$};&
+\node [DataInter] (loads-lattice) {$\text{planform}$};&
+\node [DataInter] (loads-mission) {$D$};&
+&
+\\
+%Row 7
+&
+&
+&
+&
+&
+&
+\node [DataInter] (lattice-loads) {$C_{D_{min}}, k, C_{L_{minD}}$};&
+\node [Function] (lattice) {$\begin{array}{c}\text{openavl} \\ \text{fitted polar}\end{array}$};&
+&
+&
+\\
+%Row 8
+&
+&
+&
+\node [DataInter] (mission-newton) {$W_{fuel}$};&
+&
+&
+\node [DataInter] (mission-loads) {$C_L, q, M, h$};&
+&
+\node [Function] (mission) {$\begin{array}{c}\text{OpenConcept} \\ \text{FullMissionWithReserve}\end{array}$};&
+\node [DataInter] (mission-results) {$\text{MTOW, fuel, BFL,}\ V_1$};&
+\\
+%Row 9
+\node [DataIO] (left_output_results) {$\text{report, JSON, figures}$};&
+\node [DataInter] (results-opt) {$W_{fuel}, \text{constraints}$};&
+&
+&
+&
+&
+&
+&
+&
+\node [Function] (results) {$\begin{array}{c}\text{cdadt} \\ \text{SizingResults}\end{array}$};&
+\\
+%Row 10
+&
+&
+&
+&
+&
+&
+&
+&
+&
+&
+\\
+};
+
+% XDSM process chains
+
+
+\begin{pgfonlayer}{data}
+\path
+% Horizontal edges
+(opt) edge [DataLine] (opt-cdadt)
+(cdadt) edge [DataLine] (cdadt-newton)
+(results) edge [DataLine] (results-opt)
+(newton) edge [DataLine] (newton-geom)
+(geom) edge [DataLine] (geom-weights)
+(weights) edge [DataLine] (weights-mission)
+(newton) edge [DataLine] (newton-mission)
+(mission) edge [DataLine] (mission-newton)
+(mission) edge [DataLine] (mission-loads)
+(geom) edge [DataLine] (geom-loads)
+(loads) edge [DataLine] (loads-lattice)
+(lattice) edge [DataLine] (lattice-loads)
+(loads) edge [DataLine] (loads-mission)
+(mission) edge [DataLine] (mission-results)
+(results) edge [DataLine] (left_output_results)
+% Vertical edges
+(opt-cdadt) edge [DataLine] (cdadt)
+(cdadt-newton) edge [DataLine] (newton)
+(results-opt) edge [DataLine] (opt)
+(newton-geom) edge [DataLine] (geom)
+(geom-weights) edge [DataLine] (weights)
+(weights-mission) edge [DataLine] (mission)
+(newton-mission) edge [DataLine] (mission)
+(mission-newton) edge [DataLine] (newton)
+(mission-loads) edge [DataLine] (loads)
+(geom-loads) edge [DataLine] (loads)
+(loads-lattice) edge [DataLine] (lattice)
+(lattice-loads) edge [DataLine] (loads)
+(loads-mission) edge [DataLine] (mission)
+(mission-results) edge [DataLine] (results)
+(cdadt) edge [DataLine] (output_cdadt);
+\end{pgfonlayer}
+
+\end{tikzpicture}

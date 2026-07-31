@@ -90,6 +90,7 @@ anywhere and cannot be given any, so sweep is a variable it can only lose by. Se
    configuration
    mission
    aerodynamics
+   xdsm
    certification
    optimization
    artifacts

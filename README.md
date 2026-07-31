@@ -110,6 +110,53 @@ flowchart TD
     LS -.->|solved polars, one per study| LIB["LatticeLibrary<br/><i>injected, never global</i>"]
 ```
 
+## XDSM: what feeds what
+
+An [XDSM](https://mdolab.engin.umich.edu/wiki/xdsm-overview) shows components, execution order and
+the variables passing between them. Three ship, one per set; `docs/xdsm.rst` renders all three and
+`docs/xdsm/` holds the pyXDSM sources a thesis would `\input`.
+
+**The aircraft configuration into OpenConcept's box** — five components, nine connections. The drag
+polar is inside the mission; nothing of cdadt's is on that path.
+
+```mermaid
+flowchart TD
+    OPT["**IPOPT**<br/>optimizer"] -->|"S_ref, AR, Λ_c/4, λ, T"| DV["**cdadt**<br/>disciplines"]
+    DV -->|"ac#124; variables"| MDA["**Newton**<br/>weight closure"]
+    MDA -->|"S_ref, AR, λ"| GEO["**OpenConcept**<br/>geometry, tails, empty weight"]
+    GEO -->|"MAC, S_wet, OEW"| MIS["**OpenConcept**<br/>FullMissionWithReserve"]
+    MDA -->|MTOW| MIS
+    MIS -->|"W_fuel"| MDA
+    MIS -->|"MTOW, fuel, BFL, V1"| RES["**cdadt**<br/>SizingResults"]
+    RES -->|"objective, constraints"| OPT
+```
+
+**With a vortex lattice** — seven components, fourteen connections. Two blocks appear, and one
+connection is the point of the whole layer:
+
+```mermaid
+flowchart TD
+    OPT["**IPOPT**<br/>optimizer"] -->|"S_ref, AR, Λ_c/4, λ, T"| DV["**cdadt**<br/>disciplines"]
+    DV -->|"ac#124; variables"| MDA["**Newton**<br/>weight closure"]
+    MDA -->|"S_ref, AR, λ"| GEO["**OpenConcept**<br/>geometry, tails, empty weight"]
+    GEO -->|"MAC, S_wet, OEW"| MIS["**OpenConcept**<br/>FullMissionWithReserve"]
+    MDA -->|MTOW| MIS
+    MIS ==>|"C_L, q, M, h — LIFT GOES IN"| LOADS["**cdadt**<br/>AerodynamicLoadsComp"]
+    GEO -->|"planform"| LOADS
+    LOADS <-->|"planform ⇄ C_Dmin, k, C_LminD"| LAT[("openavl **or**<br/>OpenAeroStruct<br/>fitted polar")]
+    LOADS ==>|"D — drag only"| MIS
+    MIS -->|"W_fuel"| MDA
+    MIS -->|"MTOW, fuel, BFL, V1, wing_span"| RES["**cdadt**<br/>SizingResults"]
+    RES -->|"objective, constraints"| OPT
+```
+
+The two lattice sets are **structurally identical** — same seven components, same fourteen
+connections, `openavl` swapped for `OpenAeroStruct`. That the diagrams are the same shape is the
+point of the abstraction, and it is what makes comparing the two codes meaningful.
+
+Note the thick arrows. `C_L` goes **into** the aerodynamics and only `D` comes back, which is the
+subject of the next section.
+
 ## Lift goes in, drag comes out
 
 OpenConcept's mission is a **point-mass trajectory** — `alpha` appears **zero times** in its
