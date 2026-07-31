@@ -66,8 +66,59 @@ Skeleton
    * - ``num_nodes``
      - yes
      - Analysis points per mission phase. **Must be odd**: the box integrates fuel burn with
-       Simpson's rule, which needs 2N + 1 points. 21 for the shipped sizing case; 11 for the
-       optimization, where the grid is traded against iteration count.
+       Simpson's rule, which needs 2N + 1 points. 21 for the shipped sizing cases; 11 for the
+       optimizations, where the grid is traded against iteration count.
+   * - ``options``
+     - no
+     - Passed to the analysis group's constructor. What is accepted depends on which group
+       ``model`` names -- OpenConcept's own takes none -- and it is how a study chooses its
+       aerodynamics. See below.
+
+``black_box.options``, and choosing an aerodynamics
+----------------------------------------------------
+
+``model`` decides what is driven; ``options`` configures it. OpenConcept's own
+``B738SizingMissionAnalysis`` accepts nothing, so the shipped reference case gives none.
+:class:`~cdadt.adapter.analysis.SizingMissionAnalysis` -- cdadt's own group, which exists so that
+the aerodynamics can be substituted at all -- accepts two:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 26 50
+
+   * - Option
+     - Default
+     - Meaning
+   * - ``aerodynamic_loads``
+     - ``cdadt.models.polar:PolarLoads``
+     - ``module:ClassName`` naming the :class:`~cdadt.models.loads.AerodynamicLoads` to fly with,
+       resolved the same way ``model`` is. Three ship; see :doc:`aerodynamics`.
+   * - ``wave_drag``
+     - ``false``
+     - Add OpenConcept's own Korn-equation transonic drag rise. **The shipped lattice cases set it
+       true**, because the mission cruises at M 0.7854 and neither a vortex lattice nor
+       OpenConcept's parasite buildup carries a Mach term. Needs OpenAeroStruct.
+
+.. code-block:: yaml
+
+   black_box:
+     model: cdadt.adapter.analysis:SizingMissionAnalysis
+     options:
+       aerodynamic_loads: cdadt.adapter.avl:OpenAVLLoads      # openavl, far-field
+       #                  cdadt.adapter.oas:OpenAeroStructLoads
+       #                  cdadt.models.polar:PolarLoads       # the default
+       wave_drag: true
+     num_nodes: 21
+
+An unknown key here is refused, like every other unknown key in a case file -- but the *set* of
+known keys belongs to the group being driven rather than to cdadt, so naming a group that does not
+accept ``aerodynamic_loads`` and passing one is an error the group raises, not the schema.
+
+One consequence worth stating: ``ac|aero|polar|e`` stays in ``design_variables`` whichever model is
+chosen, because the schema describes the aeroplane rather than the study. A lattice **computes** the
+span efficiency and never reads that value, so under a lattice it is an unused declaration rather
+than an input. The models say which of the box's values they consume; see
+:meth:`~cdadt.models.loads.AerodynamicLoads.build`.
 
 ``solver``
 ----------

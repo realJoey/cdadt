@@ -91,6 +91,11 @@ themselves, so the list below is generated from the same source the code uses:
      - ``tail_lever_arm_estimate.c4_to_wing_c4``
      - m
      - yes
+   * - geometry
+     - ``wing_span``
+     - ``wing_span.span``
+     - m
+     - yes
    * - aerodynamics
      - ``CLmax_cruise``
      - ``ac|aero|CLmax_cruise``
@@ -231,3 +236,16 @@ A missing optional response is reported as unavailable in the run report and in 
 JSON, rather than being dropped. A missing *required* response is an error: it means the box is
 not the model the discipline was written against, and returning a partial result quietly would
 let a report claim a quantity it never read.
+
+**Every shipped case is missing exactly one, and which one tells you which group it drives.**
+``wing_span`` exists only under cdadt's own analysis group, which composes OpenConcept's
+``WingSpan`` -- its B738 sizing group never does, because nothing in it needs a span. Conversely
+``tail_lever_arm`` is OpenConcept's own subsystem name and is absent from cdadt's group. So a run
+report's "Not published by this black box" section is a fingerprint of the model, and the tests
+assert the exact set rather than that nothing is missing. Asserting nothing is missing was true
+only by accident, and stopped being true the moment cdadt published a response OpenConcept's
+group does not compute.
+
+``wing_span`` earns its place: with the wing area free, an aspect-ratio bound can no longer stand
+in for a span limit, so a study that must fit a gate constrains the span directly. See
+:doc:`optimization`.

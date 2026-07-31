@@ -16,10 +16,11 @@ What "black box" means here, precisely
 
 Three specific things, each enforced by :mod:`tests.test_boundary` rather than claimed here.
 
-**No cdadt module imports OpenConcept.** Every cdadt source file is parsed and its imports
-inspected. The dependency is a string in a YAML file, resolved by :func:`importlib.import_module`
-at run time. That is a stronger guarantee than "cdadt does not modify OpenConcept", because it
-removes the possibility rather than the practice: there is no imported class to subclass, no
+**No cdadt module imports OpenConcept, outside one package.** Every cdadt source file is parsed
+and its imports inspected. The dependency is a string in a YAML file, resolved by
+:func:`importlib.import_module` at run time. That is a stronger guarantee than "cdadt does not
+modify OpenConcept", because it removes the possibility rather than the practice: there is no
+imported class to subclass, no
 imported component to re-wire, and no way for "compose one part of it" to drift into
 "reimplement half of it".
 
@@ -33,6 +34,35 @@ that upstream does not is examined, and the files it touches are compared agains
 actually loaded when a box is built -- taken from :data:`sys.modules`, so it is measured rather
 than assumed. The clone these results were produced against carries none: it is exactly
 ``mdolab/openconcept`` ``origin/main``. See :doc:`validation`.
+
+The one package that opens it, and why
+---------------------------------------
+
+:mod:`cdadt.adapter` imports OpenConcept. That is a widening of the rule above and it was argued
+for rather than assumed, so it is worth stating exactly how far it goes.
+
+The reason is that OpenConcept's mission profiles already take the aircraft model as an option --
+``self.options.declare("aircraft_model", ...)``, documented as *"OpenConcept-compliant airplane
+model"* -- and its own ``B738_VLM_drag.py`` uses that hook to swap in a vortex-lattice drag. The
+only obstacle is that ``B738_sizing.py`` writes ``aircraft_model=B738AircraftModel`` at the line
+where it builds the mission, so the choice cannot be reached from outside that group. Substituting
+the aerodynamics therefore means owning an aircraft model and the group that installs it, and an
+aircraft model is an OpenMDAO group OpenConcept instantiates. It cannot be a string in a YAML file.
+
+What the exemption does *not* cover:
+
+- **The physics cdadt owns.** :mod:`cdadt.models` -- the loads abstraction, the parabolic polar,
+  the planform -- imports neither OpenConcept nor openavl, so a model can be written,
+  differentiated and tested on a machine with neither installed. Separately checked.
+- **The disciplines, the config, the optimizer, the command line.** Unchanged: for all of them the
+  dependency is still a name in a file.
+- **OpenAeroStruct.** cdadt reaches it *through* OpenConcept -- ``WaveDragFromSections`` and
+  ``VLM`` are OpenConcept's components -- and may not import it anywhere at all, adapter included.
+  A separate contract test with no exemption enforces that.
+
+And the substitution changes nothing about the four rules: OpenConcept is still not modified, not
+moved, not copied, not patched. The aerodynamics is installed *into* it through an interface it
+already published. See :doc:`aerodynamics`.
 
 What is inside
 --------------

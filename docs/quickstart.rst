@@ -38,6 +38,58 @@ phase.
 ``takeoff_field_length`` and ``abort_distance`` are equal because the black box solves the
 decision speed V\ :sub:`1` to make them so. A run where they differ has not converged.
 
+Size it on your own aerodynamics
+---------------------------------
+
+The drag can be cdadt's rather than OpenConcept's, computed from a vortex lattice built on the wing
+the case file describes. Everything else -- the balanced field, the reserves, the engine deck, the
+weight closure -- stays OpenConcept's.
+
+.. code-block:: bash
+
+   cdadt size cases/b738_avl.yaml     # openavl          (needs: pip install -e ".[avl]")
+   cdadt size cases/b738_oas.yaml     # OpenAeroStruct   (needs: pip install -e ".[transonic]")
+
+Six cases ship, in three sets of two -- an analysis and an optimization each for the aircraft
+configuration alone, and for the same configuration with each lattice supplying the aerodynamic
+loads:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 33 33
+
+   * - Aerodynamics
+     - Sizing
+     - Optimization
+   * - OpenConcept's own
+     - ``b738.yaml``
+     - ``b738_optimization.yaml``
+   * - openavl vortex lattice
+     - ``b738_avl.yaml``
+     - ``b738_avl_optimization.yaml``
+   * - OpenAeroStruct vortex lattice
+     - ``b738_oas.yaml``
+     - ``b738_oas_optimization.yaml``
+
+What changes, and what does not:
+
+.. code-block:: text
+
+                          reference     openavl    OpenAeroStruct
+   MTOW (kg)               78,345.6    76,827.2         76,554.7
+   Fuel with reserves      18,597.3    17,402.7         17,188.7
+   Balanced field (ft)      5,247.8     4,986.0          4,945.3
+   wing_span (m)          not published   34.3143          34.3143
+
+Two things to know before reading that table. The lattices report a span efficiency near 0.99
+against the 0.801 the case file assumes, which is most of the difference -- but they also carry
+transonic drag rise, which the reference has no way to model, and that pushes the other way. The
+figures net the two. :doc:`aerodynamics` separates them.
+
+And ``wing_span`` appears only for the lattice cases, because it is an *optional* response:
+OpenConcept's own group never computes a span. A run that cannot report something says so under
+"Not published by this black box" rather than omitting it silently.
+
 Optimize against a certification basis
 --------------------------------------
 

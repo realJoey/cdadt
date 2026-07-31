@@ -7,13 +7,19 @@ itself — balanced-field takeoff, climb, cruise, descent, 14 CFR Part 25 reserv
 is performed by an [OpenConcept](https://github.com/mdolab/openconcept) analysis used as a
 **black box**: cdadt sets its inputs, converges it, and reads its outputs.
 
+The aerodynamics can be cdadt's own. A case file names a drag model, and three ship — a parabolic
+polar, an [openavl](https://github.com/danielenriquez59/openavl) vortex lattice, and OpenConcept's
+own OpenAeroStruct lattice — while the trajectory, balanced field, reserves, engine deck and weight
+closure stay OpenConcept's, unmodified.
+
 ```bash
-cdadt size     cases/b738.yaml
-cdadt optimize cases/b738_optimization.yaml
+cdadt size     cases/b738.yaml                  # OpenConcept's own aerodynamics
+cdadt size     cases/b738_avl.yaml              # an openavl vortex lattice
+cdadt optimize cases/b738_oas_optimization.yaml # OpenConcept's own lattice, optimized
 cdadt inspect  cases/b738.yaml
 ```
 
-## Three claims, all enforced by the test suite
+## Four claims, all enforced by the test suite
 
 **OpenConcept is a black box, and exactly one package may open it.** The sizing analysis is named
 in the case file as `module:ClassName` and loaded at run time. Sixteen contract tests hold the
@@ -25,6 +31,14 @@ untouched. Others hold the rest: `cdadt.models`, where cdadt's own physics lives
 dependency at all, so a model stays testable without them; OpenAeroStruct is reached only *through*
 OpenConcept and may not be imported by any cdadt module, adapter included; and each of the three
 clones is separately checked to carry no uncommitted change.
+
+**The aerodynamics is substitutable, and checkable against the codes it drives.** Two of the three
+models are independent vortex lattices solving the same wing — which is what turns "the lattice says
+0.99" from a claim into a measurement: compared like for like they agree on induced drag to
+**0.67%**. Geometry derivatives are exact, not approximated: `jax.jacrev` through openavl's own
+differentiable rebuild, and OpenMDAO totals through OpenAeroStruct's, both agreeing with central
+differences to 3e-7. `docs/truth.rst` maps every result to the dependency artefact that is its
+truth, including the rows that are empty and why.
 
 **Every discipline is a class.** Geometry, aerodynamics, propulsion, stability, structures,
 weights and performance are classes with encapsulated state. Each owns exactly one slice of the
@@ -239,6 +253,32 @@ An earlier version of this study reported −14.4%, from bounds that let the opt
 loading of 759 kg/m² — outside the range the box's weight correlations were fitted over, and a
 region where its solver does not converge. A better answer, obtained somewhere the model is not
 valid.
+
+### The same study, on each aerodynamics
+
+| | reference | openavl | OpenAeroStruct |
+|---|---|---|---|
+| Fuel with reserves (kg) | 16,399.6 | 15,314.9 | 15,066.7 |
+| against its own baseline | −11.8% | −12.0% | −12.3% |
+| Engine rating (lbf) | 21,357.8 | 19,985.5 | 19,677.1 |
+| **Quarter-chord sweep (deg)** | **15.0 — lower bound** | **31.41** | **31.56** |
+| Taper ratio | 0.1345 | 0.1598 | 0.2358 |
+| Wing span (m) | not published | 35.50 | 35.50 |
+| Constraints | 4/4 met | 5/5 met | 5/5 met |
+
+**Sweep is the interesting row, and it is not the lattice's doing.** The reference drives it to the
+lower bound because in that model sweep can only cost — it adds structural weight and buys nothing,
+since OpenConcept's B738 group has no transonic drag rise and cannot be given any. With drag rise
+modelled, sweep goes the other way and stops *short* of its 32° bound: an interior optimum, which is
+what a correctly posed trade looks like.
+
+Attributing that to the vortex lattice would be wrong. Flying the *parabolic polar* with wave drag
+on puts sweep at 31.1° too — it is driven by the drag-rise model, which depends on sweep whatever
+computes the induced drag. The lattices contribute the fuel, not the sweep.
+
+The two independent codes land within **0.15°** on sweep and **1.6%** on fuel. They disagree most on
+taper, which is where a near-field induced drag and a Trefftz-plane one differ most; `docs/truth.rst`
+gives the measured size of that rather than averaging it away.
 
 ```
 regulation              constraint                                             value        bound      margin  units  status

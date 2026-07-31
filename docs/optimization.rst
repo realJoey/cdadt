@@ -191,5 +191,116 @@ Reproduce it with:
 
 Read :doc:`validation` before quoting these numbers. In particular the engine-out gradient is
 evaluated clean rather than in the takeoff configuration §25.121(b) specifies, and the engine is
-a scaled deck rather than a redesigned engine -- a 23% reduction in rating is a long way down the
+a scaled deck rather than a redesigned engine -- a 21% reduction in rating is a long way down the
 surrogate.
+
+The same study on a vortex lattice
+-----------------------------------
+
+Three optimizations ship, and they differ in one thing: where the induced drag comes from. Same
+aeroplane, same mission, same reserves, same five design variables, same bounds, same certification
+basis, same driver.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 22 22 22
+
+   * -
+     - reference
+     - openavl
+     - OpenAeroStruct
+   * - Fuel with reserves (kg)
+     - 16,399.6
+     - 15,314.9
+     - 15,066.7
+   * - against its own baseline
+     - −11.8%
+     - −12.0%
+     - −12.3%
+   * - Maximum takeoff weight (kg)
+     - 72,324.2
+     - 71,642.9
+     - 71,265.6
+   * - Engine rating (lbf)
+     - 21,357.8
+     - 19,985.5
+     - 19,677.1
+   * - **Quarter-chord sweep (deg)**
+     - **15.0 — lower bound**
+     - **31.41**
+     - **31.56**
+   * - Taper ratio
+     - 0.1345
+     - 0.1598
+     - 0.2358
+   * - Wing span (m)
+     - not published
+     - 35.50
+     - 35.50
+   * - Constraints
+     - 4/4 met, 1 active
+     - 5/5 met, 1 active
+     - 5/5 met, 1 active
+
+**Sweep is the row that matters, and it is not the lattice's doing.** The reference drives
+quarter-chord sweep to its lower bound because in that model sweep can only cost -- it adds
+structural weight and buys nothing, since OpenConcept's B738 group has no transonic drag rise
+anywhere and cannot be given any. Turn drag rise on and sweep goes the other way, to about 31
+degrees, stopping short of its 32-degree bound rather than pinning to it: an interior optimum, which
+is what a correctly posed trade looks like.
+
+Attributing that to the vortex lattice would be wrong, and it was a mistake made once here. Flying
+the *parabolic polar* with wave drag on puts sweep at 31.1 degrees too. Sweep is driven by the
+drag-rise model, which depends on sweep whatever computes the induced drag. What the lattices
+contribute is the fuel, not the sweep.
+
+**The two independent codes land within 0.15 degrees of each other** on sweep and within 1.6% on
+fuel, which is the strongest cross-check in the repository: two vortex lattices, wrapped by
+different projects, given the same wing.
+
+They disagree most on **taper** -- 0.16 against 0.24 -- and that is the honest residual. Taper is
+where a near-field induced drag and a Trefftz-plane one differ most, and :doc:`truth` gives the
+measured size of that difference rather than averaging it away.
+
+What is *not* shown here: an aeroplane whose sweep is credible in absolute terms. cdadt's wing is
+two untwisted sections, which is about 6.7% optimistic on span efficiency against openavl's own
+detailed 737 model, and the Korn drag rise is a correlation rather than a transonic solve. The
+result is a coherent trade between models that are each documented, not a prediction.
+
+Reproduce them with:
+
+.. code-block:: bash
+
+   cdadt optimize cases/b738_avl_optimization.yaml    # needs the [avl] extra
+   cdadt optimize cases/b738_oas_optimization.yaml    # needs the [transonic] extra
+
+When bounds are not preferences
+--------------------------------
+
+One of these studies failed before it worked, and the reason is worth keeping.
+
+An earlier version allowed wing area down to 90 m². At the weights an optimizer reaches, that is a
+wing loading of 759 kg/m² -- outside the 500-750 band :doc:`validation` publishes as the range the
+box's empirical weight correlations were fitted over. IPOPT walked there, the Newton solver failed
+to converge in 50 iterations, and the run exited on *"invalid number in NLP function or derivative
+detected"*.
+
+It read like an aerodynamics bug and was not: at that design the box fails identically with the
+parabolic polar, and the lattice's values and gradients are finite at every bound. The design space
+was simply larger than the model it describes.
+
+The repair was not a looser tolerance. It was bounds that keep the driver inside the envelope, and
+a **span constraint** in place of one that had been standing in for it. OpenConcept's own optimizing
+example writes ``add_design_var("ac|geom|wing|AR", lower=5.0, upper=10.4)  # limit to fit in group
+III gate`` -- an aspect-ratio bound expressing a span limit, which works only because that example
+holds the area fixed. A sizing study frees the area, so the limit has to be said as what it is:
+
+.. code-block:: yaml
+
+   - name: wing_span
+     upper: 36.0
+     units: m
+     source: FAA Airplane Design Group III gate limit, 118 ft wingspan
+
+The published optimum moved as a result, from −14.4% to −11.8% on fuel. The old figure was better
+because it was obtained somewhere the model is not valid, which is the least useful kind of better.
