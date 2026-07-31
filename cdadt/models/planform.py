@@ -13,6 +13,9 @@ That is the point of :class:`~cdadt.models.loads.Planform` being abstract in wha
 
 from __future__ import annotations
 
+from types import ModuleType
+from typing import Any
+
 import numpy as np
 
 from cdadt.models.loads import Planform
@@ -143,7 +146,7 @@ class TrapezoidalPlanform(Planform):
     @property
     def span(self) -> float:
         """Wing span, metres."""
-        return float(np.sqrt(self._aspect_ratio * self._area))
+        return float(self._geometry()["span"])
 
     @property
     def root_chord(self) -> float:
@@ -151,12 +154,12 @@ class TrapezoidalPlanform(Planform):
 
         From ``S = b * c_root * (1 + taper) / 2`` for a straight-tapered wing.
         """
-        return 2.0 * self._area / (self.span * (1.0 + self._taper))
+        return float(self._geometry()["root_chord"])
 
     @property
     def tip_chord(self) -> float:
         """Chord at the tip, metres."""
-        return self.root_chord * self._taper
+        return float(self._geometry()["tip_chord"])
 
     @property
     def mean_aerodynamic_chord(self) -> float:
@@ -164,29 +167,81 @@ class TrapezoidalPlanform(Planform):
 
         The standard trapezoidal result, ``(2/3) c_root (1 + t + t^2) / (1 + t)``.
         """
-        taper = self._taper
-        return (2.0 / 3.0) * self.root_chord * (1.0 + taper + taper**2) / (1.0 + taper)
+        return float(self._geometry()["mean_aerodynamic_chord"])
+
+    @staticmethod
+    def geometry(
+        area: Any,
+        aspect_ratio: Any,
+        sweep: Any,
+        taper: Any,
+        arrays: ModuleType = np,
+    ) -> dict[str, Any]:
+        """Return the trapezoid's derived dimensions, in whichever array library is passed in.
+
+        The single statement of these formulas. It is a static method taking the four numbers
+        rather than reading ``self`` because one caller cannot use ``self``: the vortex-lattice
+        model differentiates the lattice with respect to these four numbers, so it needs them
+        evaluated on JAX tracers, and a tracer cannot be stored in a class whose constructor casts
+        to ``float``.
+
+        Parameters
+        ----------
+        area, aspect_ratio, sweep, taper : Any
+            As the constructor takes them, ``sweep`` in degrees. Typed ``Any`` rather than ``float``
+            deliberately: these are floats under numpy and JAX tracers under ``jax.numpy``, and
+            narrowing them to ``float`` would be a type annotation that lies about the second caller.
+        arrays : module, optional
+            The array library to evaluate in -- anything providing ``sqrt``, ``tan`` and
+            ``radians``. Default :mod:`numpy`. Injected rather than imported so that this module
+            still imports neither dependency: :mod:`cdadt.adapter.lattice` passes ``jax.numpy``.
+
+        Returns
+        -------
+        dict
+            ``span``, ``semi_span``, ``root_chord``, ``tip_chord``, ``mean_aerodynamic_chord`` and
+            ``tip_leading_edge``, each in whatever type ``arrays`` produces.
+
+        Notes
+        -----
+        The tip leading edge is placed so that the **quarter chord** carries the stated sweep,
+        which is what ``ac|geom|wing|c4sweep`` means -- sweeping the leading edge instead would
+        give a different wing for the same case file.
+        """
+        span = arrays.sqrt(aspect_ratio * area)
+        semi_span = 0.5 * span
+        root_chord = 2.0 * area / (span * (1.0 + taper))
+        tip_chord = root_chord * taper
+        # Convert quarter-chord sweep to a leading-edge offset: the tip quarter chord sits at
+        # the swept station, so its leading edge is a quarter of its own chord ahead of it.
+        quarter_chord_offset = semi_span * arrays.tan(arrays.radians(sweep))
+        return {
+            "span": span,
+            "semi_span": semi_span,
+            "root_chord": root_chord,
+            "tip_chord": tip_chord,
+            "mean_aerodynamic_chord": (2.0 / 3.0) * root_chord * (1.0 + taper + taper**2) / (1.0 + taper),
+            "tip_leading_edge": quarter_chord_offset + 0.25 * root_chord - 0.25 * tip_chord,
+        }
+
+    def _geometry(self) -> dict[str, Any]:
+        """This wing's derived dimensions, in numpy."""
+        return self.geometry(self._area, self._aspect_ratio, self._sweep_deg, self._taper)
 
     def sections(self) -> tuple[WingSection, ...]:
         """Return the root and tip sections of the starboard semi-span.
 
-        Two sections define a trapezoid completely, and a lattice method panels between them. The
-        tip leading edge is placed so that the **quarter chord** carries the stated sweep, which
-        is what ``ac|geom|wing|c4sweep`` means -- sweeping the leading edge instead would give a
-        different wing for the same case file.
+        Two sections define a trapezoid completely, and a lattice method panels between them.
         """
-        semi_span = 0.5 * self.span
-        root_chord = self.root_chord
-        tip_chord = self.tip_chord
-
-        quarter_chord_offset = semi_span * np.tan(np.radians(self._sweep_deg))
-        # Convert quarter-chord sweep to a leading-edge offset: the tip quarter chord sits at
-        # the swept station, so its leading edge is a quarter of its own chord ahead of it.
-        tip_leading_edge = quarter_chord_offset + 0.25 * root_chord - 0.25 * tip_chord
-
+        geometry = self._geometry()
         return (
-            WingSection(x=0.0, y=0.0, z=0.0, chord=root_chord),
-            WingSection(x=tip_leading_edge, y=semi_span, z=0.0, chord=tip_chord),
+            WingSection(x=0.0, y=0.0, z=0.0, chord=geometry["root_chord"]),
+            WingSection(
+                x=geometry["tip_leading_edge"],
+                y=geometry["semi_span"],
+                z=0.0,
+                chord=geometry["tip_chord"],
+            ),
         )
 
     def __repr__(self) -> str:
