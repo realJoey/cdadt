@@ -206,6 +206,11 @@ jobs:
         # first place to look when it does.
         run: |
           python -c "import numpy, openmdao, cdadt; print('cdadt', cdadt.__version__, '| numpy', numpy.__version__, '| openmdao', openmdao.__version__)"
+          # The BLAS, because environment.yml pins `=*openblas` and calls that pin load-bearing.
+          # When a converged result differed between a developer machine and this runner by 3e-6,
+          # the linear algebra was a prime suspect and nothing in the log could confirm or clear
+          # it. One line here means the next such difference starts with evidence.
+          conda list "libblas|libcblas|liblapack|libopenblas|mkl" || true
           python -c "from cdadt.adapter.avl import openavl_is_available; print('openavl available:', openavl_is_available())"
           python -c "from cdadt.adapter.oas import openaerostruct_is_available; print('OpenAeroStruct available:', openaerostruct_is_available())"
 

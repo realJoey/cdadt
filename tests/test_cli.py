@@ -139,8 +139,34 @@ def test_size_runs_the_case_and_can_archive_it(tmp_path, capsys):
     archived = json.loads(destination.read_text(encoding="utf-8"))
     assert archived["model"] == "openconcept.examples.B738_sizing:B738SizingMissionAnalysis"
     assert archived["num_nodes"] == 21
-    assert archived["results"]["weights"]["MTOW"] == pytest.approx(78345.6435, rel=1e-6)
-    assert archived["results"]["performance"]["takeoff_field_length"] == pytest.approx(5247.7948, rel=1e-6)
+
+    # The round trip, which is what this test is named for, and the only part of it that is exact.
+    # The report rounds to four decimals while the JSON keeps full precision, so formatting the
+    # archived value the way the report formats it and finding it in the printed text proves the
+    # two outputs describe the same run. This holds on any machine because both sides come from
+    # one solve rather than from a number written down earlier.
+    assert f"{archived['results']['weights']['MTOW']:.4f}" in printed
+    assert f"{archived['results']['performance']['takeoff_field_length']:.4f}" in printed
+
+    # Sanity anchors, at OpenConcept's tolerance rather than at one this cannot honour.
+    #
+    # These were 1e-6 and failed on a GitHub Windows runner: MTOW came out 78345.87 against the
+    # 78345.6435 transcribed from a run on a developer machine, a relative difference of 3e-6.
+    # The solve is not the suspect -- it converges in six Newton iterations to a relative residual
+    # of 1e-12, nowhere near ``maxiter`` -- so what differs is the floating-point path to the same
+    # root, and a converged residual bounds the residual rather than the answer.
+    #
+    # 1e-4 is not a number picked to make this pass. It is ``PUBLISHED_TOLERANCE`` in
+    # test_validation.py: the tolerance OpenConcept itself asserts these quantities to in
+    # ``B738SizingTestCase``. Holding a transcribed literal to 1e-6 claimed two decades more
+    # reproducibility than the dependency claims for its own published values.
+    #
+    # Nothing is lost by relaxing it here. The physics is anchored twice over in test_validation,
+    # and better: once against a live ``run_738_sizing_analysis`` in the same process at 1e-6,
+    # which is machine-independent because both sides move together, and once against
+    # OpenConcept's published numbers. This test's subject is the command line, not the mission.
+    assert archived["results"]["weights"]["MTOW"] == pytest.approx(78345.6435, rel=1e-4)
+    assert archived["results"]["performance"]["takeoff_field_length"] == pytest.approx(5247.7948, rel=1e-4)
     # Vector results survive the round trip as lists, not as unserializable arrays.
     assert len(archived["results"]["performance"]["climb_throttle"]) == 21
 
