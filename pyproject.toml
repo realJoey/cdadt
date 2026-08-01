@@ -96,7 +96,14 @@ target-version = "py311"
 [tool.ruff.lint]
 # Explicit rather than inherited: ruff's default set changes between releases, and a lint
 # configuration that shifts under the code is worse than a narrow one.
-select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+#
+# "S" is flake8-bandit -- static security analysis. It is here because GitHub's CodeQL, the usual
+# answer, cannot run on this repository: code scanning on a *private* repository requires GitHub
+# Advanced Security, and the API returns 403 without it. Adding a CodeQL workflow anyway would
+# produce a permanently failing check, which is worse than none -- a check that is always red
+# teaches you to ignore red. Bandit rules run in the linter that already runs, on every push, for
+# free. The cdadt package passes them with nothing ignored.
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "S"]
 ignore = [
     # Sphinx cross-references in docstrings routinely exceed the formatter's reach; the
     # formatter owns line length for code.
@@ -106,7 +113,15 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Tests deliberately assert on broad exception types when the property under test is
 # "this raises", regardless of which exception type the implementation chooses.
-"tests/*" = ["B017"]
+#
+# S101 is `assert`, which is what a test *is* -- 726 of them here. S603 and S607 are the boundary
+# test shelling out to `git` to inspect the OpenConcept clone; the arguments are literals in the
+# test, not input. Note these are scoped to the directories that earn them: the exemption is not
+# available to `cdadt/`, which has no bandit findings to exempt.
+"tests/*" = ["B017", "S101", "S603", "S607"]
+# The XDSM builder runs a LaTeX engine and a rasteriser it located itself on PATH. Same argument:
+# the command is assembled from a discovered executable and a path this file computed.
+"docs/*" = ["S603"]
 
 [tool.coverage.run]
 source = ["cdadt"]
