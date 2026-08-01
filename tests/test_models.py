@@ -233,20 +233,26 @@ def test_the_analytic_drag_gradients_match_finite_differences():
     step = 1e-7
 
     def drag_of(CL=lift, e=efficiency, CD0=zero_lift, AR=aspect):
-        """CD at a perturbed operating point, through the model rather than the formula."""
+        """CD at a perturbed operating point, through the model rather than the formula.
+
+        ``.item()`` rather than ``float()`` because these are one-element arrays, and calling
+        ``float()`` on an array is deprecated as of NumPy 1.25. It is also the stricter of the
+        two: ``.item()`` refuses anything that is not a single value, so a model that started
+        returning a vector here would fail rather than silently be read as its first point.
+        """
         model = PolarLoads(span_efficiency=e, zero_lift_drag=CD0)
-        return float(
-            model.coefficients(FlightCondition(CL=CL, mach=0.78), TrapezoidalPlanform(area=124.6, aspect_ratio=AR)).CD
-        )
+        return model.coefficients(
+            FlightCondition(CL=CL, mach=0.78), TrapezoidalPlanform(area=124.6, aspect_ratio=AR)
+        ).CD.item()
 
     gradients = PolarLoads(span_efficiency=efficiency, zero_lift_drag=zero_lift).drag_gradients(
         FlightCondition(CL=lift, mach=0.78), wing
     )
 
-    assert float(gradients["CL"]) == pytest.approx((drag_of(CL=lift + step) - drag_of()) / step, rel=1e-5)
-    assert float(gradients["e"]) == pytest.approx((drag_of(e=efficiency + step) - drag_of()) / step, rel=1e-5)
-    assert float(gradients["AR"]) == pytest.approx((drag_of(AR=aspect + step) - drag_of()) / step, rel=1e-5)
-    assert float(gradients["CD0"]) == pytest.approx(1.0)
+    assert gradients["CL"].item() == pytest.approx((drag_of(CL=lift + step) - drag_of()) / step, rel=1e-5)
+    assert gradients["e"].item() == pytest.approx((drag_of(e=efficiency + step) - drag_of()) / step, rel=1e-5)
+    assert gradients["AR"].item() == pytest.approx((drag_of(AR=aspect + step) - drag_of()) / step, rel=1e-5)
+    assert gradients["CD0"].item() == pytest.approx(1.0)
 
 
 # =============================================================================================
