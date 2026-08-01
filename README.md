@@ -1,5 +1,14 @@
 # cdadt
 
+[![CI](https://github.com/realJoey/cdadt/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/realJoey/cdadt/actions/workflows/ci.yml)
+![coverage](docs/badges/coverage.svg)
+![python](docs/badges/python.svg)
+![license](docs/badges/license.svg)
+![code style](docs/badges/code_style.svg)
+![linting](docs/badges/linting.svg)
+![docs](docs/badges/docs.svg)
+![version](docs/badges/version.svg)
+
 A certification-driven aircraft design tool.
 
 cdadt sizes and optimizes an aircraft against an explicit certification basis. The sizing

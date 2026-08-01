@@ -1,0 +1,38 @@
+# Keep the things this repository pins from going quietly stale.
+#
+# This is here in place of GitHub's dependency-review action, which cannot run on a private
+# repository: it needs the dependency graph, and the API returns 404 for this repo. Dependabot
+# *version* updates have no such restriction, and they address the failure that actually happened
+# here -- the CI workflow was first written against actions/checkout@v4, actions/cache@v4 and
+# setup-miniconda@v3 while the current majors were v7, v6 and v4. Nothing would have said so.
+#
+# Deliberately not covering the three research dependencies. OpenConcept, OpenAeroStruct and
+# openavl are pinned to exact commits in ci.yml because the validation tests assert agreement with
+# OpenConcept's published example to 1e-6; a bot bumping those would be proposing to invalidate
+# published numbers, which is a decision that belongs to whoever re-runs them.
+
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    commit-message:
+      # The repository's own convention: imperative, and no tooling prefix noise.
+      prefix: "Update"
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "Update"
+    ignore:
+      # numpy is held below 2 across the whole stack: OpenConcept requires it, and on Windows the
+      # openblas-backed build is what keeps NumPy from aborting the interpreter inside
+      # numpy.linalg.solve. A major bump here is an environment migration, not a dependency
+      # update. See docs/install.rst and environment.yml.
+      - dependency-name: numpy
+        update-types: ["version-update:semver-major"]
