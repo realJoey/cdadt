@@ -81,7 +81,13 @@ jobs:
       - name: The fast tests
         # 14 of these skip without openavl and OpenAeroStruct, which this job does not install.
         # `full` is where they run.
-        run: pytest -m "unit or contract" -q
+        #
+        # `python -m pytest`, not bare `pytest`. The `-m` form puts the working directory on
+        # sys.path; the console script does not, and three test modules import `tests.conftest`
+        # by name. Bare `pytest` fails collection on them with "No module named 'tests'". This is
+        # also how the suite is run everywhere else -- locally, in docs/developing.rst, and in
+        # `full` via `coverage run -m pytest`, which takes the same path.
+        run: python -m pytest -m "unit or contract" -q
 
       - name: Build the documentation site
         # autodoc imports cdadt, which imports OpenConcept -- already installed above. It does not
