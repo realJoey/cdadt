@@ -36,3 +36,15 @@ updates:
       # update. See docs/install.rst and environment.yml.
       - dependency-name: numpy
         update-types: ["version-update:semver-major"]
+      # jax and jaxlib are the same constraint wearing a different name. The `avl` extra declares
+      # `jax<0.5` not because 0.5 is untested but because jax 0.6+ requires numpy>=2, so that
+      # bound is what holds numpy down -- a ceiling, not a lag. Ignoring only numpy above missed
+      # this, and Dependabot duly proposed <0.5 -> <0.7 in #2 and #3, both closed.
+      #
+      # Those two PRs also passed CI, which is worth knowing rather than reassuring: ci.yml
+      # installs `jax==0.4.38 jaxlib==0.4.38` explicitly, so widening the declared bound changes
+      # nothing about what the runner installs and the gate cannot see the breakage. Raising
+      # these is an environment migration, done deliberately with environment.yml, not a
+      # dependency update to be reviewed on a green tick.
+      - dependency-name: jax
+      - dependency-name: jaxlib
