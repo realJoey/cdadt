@@ -333,7 +333,13 @@ valid.
 
 ### The same study, on each aerodynamics
 
-| | reference | openavl | OpenAeroStruct |
+Every column below is an **optimization**, differing only in what computes the drag. None of them
+is the reference analysis: `cases/b738.yaml` holds quarter-chord sweep **fixed at 25°** — the real
+737-800 value — and has no design variables and no bounds at all. Bounds exist only in the
+`*_optimization.yaml` cases, so a value "on a bound" is always an optimizer result and never
+something OpenConcept's own example does.
+
+| | OpenConcept's polar | openavl | OpenAeroStruct |
 |---|---|---|---|
 | Fuel with reserves (kg) | 16,399.6 | 15,314.9 | 15,066.7 |
 | against its own baseline | −11.8% | −12.0% | −12.3% |
@@ -343,11 +349,14 @@ valid.
 | Wing span (m) | not published | 35.50 | 35.50 |
 | Constraints | 4/4 met | 5/5 met | 5/5 met |
 
-**Sweep is the interesting row, and it is not the lattice's doing.** The reference drives it to the
-lower bound because in that model sweep can only cost — it adds structural weight and buys nothing,
-since OpenConcept's B738 group has no transonic drag rise and cannot be given any. With drag rise
-modelled, sweep goes the other way and stops *short* of its 32° bound: an interior optimum, which is
-what a correctly posed trade looks like.
+All three start from the same 25° and are free over the same [15°, 32°] range.
+
+**Sweep is the interesting row, and it is not the lattice's doing.** Optimizing on OpenConcept's own
+polar drives sweep to the lower bound because in *that* model sweep can only cost — it adds
+structural weight through the empty-weight correlation and buys nothing back, since the B738 group
+has no transonic drag rise and cannot be given any. With drag rise modelled, sweep goes the other
+way and stops *short* of its 32° bound: an interior optimum, which is what a correctly posed trade
+looks like.
 
 Attributing that to the vortex lattice would be wrong. Flying the *parabolic polar* with wave drag
 on puts sweep at 31.1° too — it is driven by the drag-rise model, which depends on sweep whatever

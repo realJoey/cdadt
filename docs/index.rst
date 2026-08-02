@@ -69,8 +69,12 @@ binds.
 
 The same study on a vortex lattice reaches 12.0% (openavl) and 12.3% (OpenAeroStruct), and reaches
 a **different aeroplane**: with transonic drag rise modelled, quarter-chord sweep goes to 31.4 and
-31.6 degrees where the reference drives it to its lower bound. The reference has no drag rise
-anywhere and cannot be given any, so sweep is a variable it can only lose by. See
+31.6 degrees, where optimizing on OpenConcept's own polar drives it to its lower bound. That polar
+has no drag rise anywhere and cannot be given any, so sweep is a variable it can only lose by.
+
+All three of those are optimizations. The reference *analysis* holds sweep fixed at the real
+737-800's 25 degrees and has no design variables and no bounds, so a value sitting on a bound is
+always an optimizer result and never something OpenConcept's own example does. See
 :doc:`optimization` and, for what is *not* established, :doc:`validation`.
 
 .. toctree::
