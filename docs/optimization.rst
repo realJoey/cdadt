@@ -206,7 +206,7 @@ basis, same driver.
    :widths: 34 22 22 22
 
    * -
-     - reference
+     - OpenConcept's polar
      - openavl
      - OpenAeroStruct
    * - Fuel with reserves (kg)
@@ -242,12 +242,18 @@ basis, same driver.
      - 5/5 met, 1 active
      - 5/5 met, 1 active
 
-**Sweep is the row that matters, and it is not the lattice's doing.** The reference drives
-quarter-chord sweep to its lower bound because in that model sweep can only cost -- it adds
-structural weight and buys nothing, since OpenConcept's B738 group has no transonic drag rise
-anywhere and cannot be given any. Turn drag rise on and sweep goes the other way, to about 31
-degrees, stopping short of its 32-degree bound rather than pinning to it: an interior optimum, which
-is what a correctly posed trade looks like.
+Every column above is an optimization over the same design variables, from the same starting point,
+differing only in what computes the drag. None of them is the reference analysis: ``b738.yaml``
+holds quarter-chord sweep fixed at the real 737-800's 25 degrees and declares no design variables
+and no bounds at all. A value on a bound is therefore always an optimizer result, and never
+something OpenConcept's own example produces.
+
+**Sweep is the row that matters, and it is not the lattice's doing.** Optimizing on OpenConcept's
+own polar drives quarter-chord sweep to its lower bound because in *that* model sweep can only cost
+-- it adds structural weight through the empty-weight correlation and buys nothing back, since the
+B738 group has no transonic drag rise anywhere and cannot be given any. Turn drag rise on and sweep
+goes the other way, to about 31 degrees, stopping short of its 32-degree bound rather than pinning
+to it: an interior optimum, which is what a correctly posed trade looks like.
 
 Attributing that to the vortex lattice would be wrong, and it was a mistake made once here. Flying
 the *parabolic polar* with wave drag on puts sweep at 31.1 degrees too. Sweep is driven by the

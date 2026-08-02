@@ -16,6 +16,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+import yaml
 
 import cdadt
 from cdadt import ResponseCatalog
@@ -220,6 +221,36 @@ def test_every_committed_badge_is_shown_and_every_shown_badge_exists():
 
     assert not committed - shown, f"badges generated but not displayed: {sorted(committed - shown)}"
     assert not shown - committed, f"README shows badges that do not exist: {sorted(shown - committed)}"
+
+
+@pytest.mark.contract
+def test_the_reference_case_frees_nothing_and_so_can_have_nothing_on_a_bound():
+    """The reference analysis has no design variables and no bounds, and the prose says so.
+
+    Written because the documentation invited a real misreading. A comparison table headed
+    ``reference | openavl | OpenAeroStruct`` listed quarter-chord sweep as "15.0 -- lower bound"
+    in the first column, and "reference" there meant *the reference aerodynamics, optimized*
+    while every other use of the word in these pages means *OpenConcept's own analysis*. Read the
+    second way -- which is the natural way -- it says the reference example pins sweep to a bound,
+    and OpenConcept's example has no bounds to pin anything to.
+
+    The numbers were right and the label was wrong, which is the harder kind of error to see. So
+    the claim that replaced it is checked here: the reference case frees nothing, and therefore
+    nothing in it can sit on a bound. If a future case file gives ``b738.yaml`` an ``optimize:``
+    entry, the pages that say otherwise fail with it.
+    """
+    reference = yaml.safe_load((ROOT / "cases" / "b738.yaml").read_text(encoding="utf-8"))
+    variables = reference["design_variables"]
+
+    freed = sorted(name for name, spec in variables.items() if isinstance(spec, dict) and "optimize" in spec)
+    assert not freed, (
+        "cases/b738.yaml is documented as the reference analysis, with no design variables and no "
+        f"bounds; these are freed: {freed}"
+    )
+
+    # The specific number the prose quotes, from the file rather than from memory.
+    assert variables["ac|geom|wing|c4sweep"]["value"] == 25
+    assert variables["ac|geom|wing|c4sweep"]["units"] == "deg"
 
 
 @pytest.mark.contract
