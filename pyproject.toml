@@ -51,7 +51,7 @@ plot = ["matplotlib"]
 # The vortex-lattice aerodynamics. openavl is not on PyPI, so it is installed from a clone; see
 # docs/aerodynamics.rst, which also explains why its own dependencies must not be installed
 # unpinned -- they would pull numpy 2.4 over the numpy<2 this environment requires.
-avl = ["jax<0.5", "jaxlib<0.5"]
+avl = ["jax<0.5", "jaxlib<0.7"]
 # Transonic drag rise and the second vortex lattice cdadt is validated against. Both are
 # OpenConcept's own components; OpenAeroStruct is where OpenConcept keeps them, so cdadt reaches it
 # only through OpenConcept and never imports it outside a validation test. Its own requirements are
