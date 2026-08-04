@@ -1,10 +1,14 @@
 # Keep the things this repository pins from going quietly stale.
 #
-# This is here in place of GitHub's dependency-review action, which cannot run on a private
-# repository: it needs the dependency graph, and the API returns 404 for this repo. Dependabot
-# *version* updates have no such restriction, and they address the failure that actually happened
-# here -- the CI workflow was first written against actions/checkout@v4, actions/cache@v4 and
-# setup-miniconda@v3 while the current majors were v7, v6 and v4. Nothing would have said so.
+# This is here in place of GitHub's dependency-review action, which needs the dependency graph.
+# That was unavailable when this repository was private; the repository is public now, but the
+# graph still is not there -- /repos/realJoey/cdadt/dependency-graph/sbom answered 404 on
+# 2026-08-03 while the same call against public mdolab/openconcept returned a populated SBOM. So
+# the action remains something to add once the graph exists, not before.
+#
+# Dependabot *version* updates never needed the graph, and they address the failure that actually
+# happened here -- the CI workflow was first written against actions/checkout@v4, actions/cache@v4
+# and setup-miniconda@v3 while the current majors were v7, v6 and v4. Nothing would have said so.
 #
 # Deliberately not covering the three research dependencies. OpenConcept, OpenAeroStruct and
 # openavl are pinned to exact commits in ci.yml because the validation tests assert agreement with

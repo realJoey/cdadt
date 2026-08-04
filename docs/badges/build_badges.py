@@ -4,18 +4,23 @@ Why these are files in the repository rather than ``shields.io`` URLs
 ---------------------------------------------------------------------
 
 The usual way to put a badge on a README is to point an ``<img>`` at ``shields.io``, which reads
-the repository and renders the answer live. That does not work here: ``cdadt`` is a **private**
-repository, so shields.io -- an anonymous third party -- cannot read it, and every such badge
-would render as an error rather than as a status.
+the repository and renders the answer live. This repository is public, so that route is open to
+it -- these badges are files by choice, not by necessity. The original reason was that an
+anonymous third party could not read a private repository at all; the reason they stayed is
+different, and better.
+
+What these four badges report -- the Python floor, the licence, the version, the coverage
+threshold -- are all facts *this repository defines*. A shields.io badge would restate them from
+somewhere else, on someone else's schedule, with no way for the suite to notice when the two
+disagreed. Deriving and committing them keeps the statement and its source in the same commit.
 
 The ``tests`` badge is the exception, and it is not built here. GitHub serves it from the real
-outcome of ``.github/workflows/ci.yml``, on github.com, where the reader's own access to this
-private repository is what authorises it. A test result is the only status that changes without
+outcome of ``.github/workflows/ci.yml``. A test result is the only status that changes without
 any file changing, so it is the only one that has to be live.
 
-The rest are generated here and committed. That buys privacy at the cost of the thing a live
-badge gives for free: a committed badge is a *claim*, and a claim that nothing checks is exactly
-the kind of decoration this project has been bitten by before. Two things stop that:
+The rest are generated here and committed. A committed badge is a *claim*, and a claim that
+nothing checks is exactly the kind of decoration this project has been bitten by before. Two
+things stop that:
 
 * Every value is **derived**, never typed. The Python floor comes from ``requires-python``, the
   licence from ``LICENSE``, the version from ``cdadt.__version__``, and the coverage figure from

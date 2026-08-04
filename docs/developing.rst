@@ -214,10 +214,11 @@ command, and in both cases the suite fails if the committed copy has drifted:
    python docs/xdsm/build_xdsm.py      # the three XDSM figures
    python docs/badges/build_badges.py  # the README status badges
 
-The badges are files rather than ``shields.io`` URLs because this repository is private, and an
-anonymous service cannot read a private repository -- every live badge would render as an error.
-Committing them trades a live status for a stored one, and a stored status is only worth showing
-if something checks it. Contract tests in ``test_docs.py`` do: every value is re-derived from the
+The badges are files rather than ``shields.io`` URLs by choice. The repository is public, so a
+live badge would work -- but all four report facts *this repository defines* (the Python floor,
+the licence, the version, the coverage threshold), and a live badge would restate them from
+elsewhere with nothing able to notice when the two disagreed. A stored status is only worth
+showing if something checks it. Contract tests in ``test_docs.py`` do: every value is re-derived from the
 file that defines it (``requires-python``, ``LICENSE``, ``cdadt.__version__``, ``fail_under``),
 and the whole set is regenerated into a temporary directory and compared byte for byte, so a
 stale or hand-edited SVG fails the suite.
@@ -321,17 +322,24 @@ learning about on a schedule rather than from whoever pushes next.
 Security scanning, and what is not here
 ---------------------------------------
 
-The obvious thing to reach for is GitHub's CodeQL. It cannot run on this repository: code
-scanning on a **private** repository requires GitHub Advanced Security, and
-``/repos/realJoey/cdadt/code-scanning/alerts`` returns 403 without it. The same applies to the
-dependency-review action, which needs a dependency graph this repository does not expose.
+The obvious thing to reach for is GitHub's CodeQL. Until this repository was made public it could
+not run at all -- code scanning on a **private** repository requires GitHub Advanced Security, and
+``/repos/realJoey/cdadt/code-scanning/alerts`` returned 403 without it. That is no longer the
+constraint. The same endpoint now answers 404 *"no analysis found"*, which is the difference
+between forbidden and simply never run. **CodeQL is therefore an open decision, not a closed
+one**, and this section describes what is in place rather than what is possible.
 
-Adding those workflows anyway would produce permanently failing checks. That is not a
-theoretical concern: the sibling ``penguino`` repository carries both, and they have failed **39
-and 11 times respectively, without a single success**. A check that is always red teaches you to
-ignore red, which costs more than the check was ever worth.
+The dependency-review action is in the same position with one measured caveat: it reads the
+dependency graph, and as of 2026-08-03 ``/repos/realJoey/cdadt/dependency-graph/sbom`` still
+answers 404 for this repository while the same call against a public ``mdolab/openconcept``
+returns a populated SBOM. So the graph is not there to read yet, whatever the reason.
 
-So the capability is bought where it can actually be had:
+Adding either workflow before that is settled would produce permanently failing checks, and that
+is not a theoretical concern: the sibling ``penguino`` repository carries both, and they have
+failed **39 and 11 times respectively, without a single success**. A check that is always red
+teaches you to ignore red, which costs more than the check was ever worth.
+
+What is actually in place, and why it was worth having even when CodeQL was unavailable:
 
 **Static security analysis runs in the linter.** ``ruff``'s ``S`` rules are flake8-bandit, and
 they now run on every push in a job that takes two minutes. The ``cdadt`` package passes them
@@ -340,9 +348,10 @@ with nothing ignored. The exemptions in ``per-file-ignores`` are scoped to ``tes
 shell out -- the boundary test to ``git``, the XDSM builder to a LaTeX engine -- on arguments
 they construct themselves.
 
-**Dependency freshness comes from Dependabot**, in ``.github/dependabot.yml``, which has no
-private-repository restriction. It watches the GitHub Actions and pip ecosystems monthly. This
-addresses a failure that really happened: the workflow was first written against
+**Dependency freshness comes from Dependabot**, in ``.github/dependabot.yml``. Version updates
+need no dependency graph, which is why they worked when the repository was private and why they
+are unaffected by its now being public. It watches the GitHub Actions and pip ecosystems monthly.
+This addresses a failure that really happened: the workflow was first written against
 ``actions/checkout@v4``, ``actions/cache@v4`` and ``setup-miniconda@v3`` when the current majors
 were v7, v6 and v4, and nothing in the repository would have said so.
 
