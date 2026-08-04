@@ -8,6 +8,12 @@ dist/
 .coverage
 htmlcov/
 coverage.xml
+# `full` writes these two at the repository root on its way to publishing the README badges --
+# `coverage json -o coverage.json`, then docs/badges/publish_badges.py into badges/. Neither is
+# ever committed: the whole point of the change away from committed SVGs is that a badge with no
+# run behind it should go visibly stale rather than sit in the repository looking current.
+coverage.json
+/badges/
 docs/_build/
 .ruff_cache/
 # *.sql

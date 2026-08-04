@@ -206,30 +206,67 @@ still catch a run started from the wrong directory, which is what they were for.
 Generated artefacts
 -------------------
 
-Two directories hold files that are committed but never hand-edited. Both regenerate from one
-command, and in both cases the suite fails if the committed copy has drifted:
+One directory holds files that are committed but never hand-edited. They regenerate from one
+command, and the suite fails if the committed copy has drifted:
 
 .. code-block:: bash
 
    python docs/xdsm/build_xdsm.py      # the three XDSM figures
-   python docs/badges/build_badges.py  # the README status badges
 
-The badges are files rather than ``shields.io`` URLs by choice. The repository is public, so a
-live badge would work -- but all four report facts *this repository defines* (the Python floor,
-the licence, the version, the coverage threshold), and a live badge would restate them from
-elsewhere with nothing able to notice when the two disagreed. A stored status is only worth
-showing if something checks it. Contract tests in ``test_docs.py`` do: every value is re-derived from the
-file that defines it (``requires-python``, ``LICENSE``, ``cdadt.__version__``, ``fail_under``),
-and the whole set is regenerated into a temporary directory and compared byte for byte, so a
-stale or hand-edited SVG fails the suite.
+The badges
+----------
 
-The coverage badge is the one worth understanding. It does not report a measured number -- it
-reports ``fail_under``, which ``coverage report`` *enforces*. A green suite is therefore the
-evidence for whatever that badge says, rather than a memory of a good run.
+Every badge in ``README.md`` is live, and nothing about them is committed. Each is a shields.io
+URL pointing at whatever source actually defines the value:
 
-The ``CI`` badge is the exception: it is **not** generated here. GitHub serves it live from the
-real outcome of the workflow below, which is right because a test result is the only status that
-changes without any file in the repository changing.
+.. list-table::
+   :header-rows: 1
+   :widths: 18 42 40
+
+   * - Badge
+     - Source
+     - Why there
+   * - ``CI``
+     - GitHub, from ``ci.yml``'s real outcome
+     - A test result is the only status that changes without any file changing.
+   * - ``coverage``
+     - ``<site>/badges/coverage.json``
+     - Only ``full`` runs the whole suite under coverage, so only ``full`` can measure it.
+   * - ``version``
+     - ``<site>/badges/version.json``
+     - ``pyproject.toml`` declares the version ``dynamic``; it resolves from ``cdadt.__version__``.
+   * - ``python``
+     - ``pyproject.toml`` over raw.githubusercontent
+     - ``requires-python`` is the declaration; the badge reads it directly.
+   * - ``license``
+     - GitHub's own licence detection
+     - Same reason.
+   * - ``linting``
+     - The document ``ruff`` publishes for the purpose
+     - Upstream's to keep current, not ours.
+   * - ``docs``
+     - Whether the published site answers
+     - A docs badge should report the docs, not a build step.
+
+The two served from our own site are the interesting ones. They are written by
+``docs/badges/publish_badges.py``, which runs inside ``full`` after ``coverage report`` has
+already failed the build if coverage fell short -- so the number a badge shows is one the gate
+accepted, and the badge cannot be greener than the build. The output is published with the
+documentation and never committed, which means a badge with no run behind it goes visibly stale
+rather than quietly continuing to display a figure nobody re-measured.
+
+This replaced a set of committed SVGs. Those were generated because ``cdadt`` was private and
+shields.io could not read it, and they carried the defect that argument was paying for: the
+coverage badge reported ``fail_under``, the threshold the suite *enforces*, not the coverage a
+run *achieved*. True, checkable, and one step removed from what a reader assumes it says.
+
+Live badges are not self-checking, though, and that is what ``test_docs.py`` is now for. A URL
+can name a renamed workflow, a TOML key that no longer exists, or a site path CI does not write,
+and shields.io renders every one of those as a small grey error that reads like a rendering
+glitch. So each badge is traced offline to its source, an unrecognised badge shape *fails* rather
+than passing unexamined, and the publisher is run against a fabricated coverage report to check
+that its filenames are the ones the README asks for. One test exists purely to stop the coverage
+figure rounding 99.96% up into a claim of ``100%``.
 
 Continuous integration
 ----------------------
@@ -265,15 +302,21 @@ despite being an extra -- three artefact tests draw real figures and *fail* rath
 without it.
 
 **The site this documentation builds into is published at**
-https://realjoey.github.io/cdadt/. ``quick`` builds ``docs/`` with ``sphinx -W``, and on ``main``
-the ``pages`` job deploys exactly that build -- the whole site, API reference and XDSM figures
-included. Pages is configured with GitHub Actions as its source rather than a branch, so nothing
-is ever committed to a ``gh-pages`` branch and no Jekyll pass runs over Sphinx's output.
+https://realjoey.github.io/cdadt/. Pages is configured with GitHub Actions as its source rather
+than a branch, so nothing is ever committed to a ``gh-pages`` branch and no Jekyll pass runs over
+Sphinx's output.
 
-``pages`` needs ``quick``, and that dependency is the point: a commit cannot replace the live
-site unless ``black``, ``ruff``, the fast tests and ``sphinx -W`` all passed on it, so a red
-build leaves the previous site standing. It deliberately does *not* wait on ``full``, which
-rebuilds the same documentation from the same sources an hour later on a Windows runner.
+The ``pages`` job builds nothing itself. It joins two things and deploys them: the rendered site
+from ``quick``, and the badge documents from ``full``. Needing both is what makes the deployment
+mean something -- a commit cannot replace the live site unless ``black``, ``ruff``, the *whole*
+suite, the coverage threshold and ``sphinx -W`` all passed on it, so a red build anywhere leaves
+the previous site standing.
+
+It also costs something, and the cost is latency: the site trails a push to ``main`` by however
+long ``full`` takes, up to about an hour. That is the price of a coverage badge reporting a
+measured number, since only ``full`` measures it. Splitting this into a fast prose-only deploy
+followed by a badge-only one would buy the latency back, at the cost of two deployments racing
+for the same site.
 
 **The rendered site is also downloadable from every run**, on any branch, as an artifact named
 ``documentation`` kept for 90 days. On a branch that artifact is the only way to see what the
