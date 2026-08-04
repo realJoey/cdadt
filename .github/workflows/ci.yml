@@ -105,36 +105,37 @@ jobs:
           path: docs/_build/html
           retention-days: 90
 
-      - name: Package the site for Pages
-        # main only: this artifact exists to be consumed by the `pages` job below, which does not
-        # run anywhere else, and uploading a second copy of the site on every branch push would
-        # buy nothing. `upload-pages-artifact` differs from the step above in more than intent --
-        # it tars the directory and fixes the artifact name, both of which `deploy-pages`
-        # requires.
-        if: github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@v5
-        with:
-          path: docs/_build/html
-
   pages:
     name: pages
-    # The published site is main's, and only main's. `needs: quick` is what makes that safe: the
-    # deployment cannot happen unless black, ruff, the fast tests and `sphinx -W` all passed on
-    # the same commit, so a red build leaves the previous site standing rather than replacing it
-    # with a broken one.
+    # The published site is main's, and only main's, and it is assembled from both gates rather
+    # than built here: the prose and API reference come from `quick`, the badge documents from
+    # `full`, and this job only joins them and deploys.
     #
-    # Note this deliberately does not wait on `full`. `full` takes over an hour on a Windows
-    # runner and rebuilds the same documentation from the same sources; blocking publication on
-    # it would mean the site trails main by an hour for no gain in what gets served.
-    needs: quick
+    # `needs` on both is what the README's badges cost. A coverage badge that reports a
+    # *measured* number can only come from the job that measures it, and only `full` runs the
+    # whole suite under coverage -- `quick` deliberately excludes every test that converges a
+    # mission, so its coverage would be a smaller number about a smaller thing. Publishing on
+    # `quick` alone would mean either no coverage badge or a stale one.
+    #
+    # The cost is latency, and it is real: the site trails a push to main by however long `full`
+    # takes, which is up to about an hour. What does not wait is per-branch access to a build --
+    # `quick` uploads the whole rendered site as an artifact on every branch, in about two
+    # minutes. If that trade stops being worth it, splitting this into a fast prose-only deploy
+    # and a second badge-only one is the change; it was not done here because two deployments
+    # racing for the same site is a harder thing to reason about than an hour of lag.
+    needs: [quick, full]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    # Scoped to this job rather than the workflow, so `quick` and `full` keep the default token
-    # and nothing that runs test code can write a deployment. id-token is not optional: Pages
-    # deployments authenticate by OIDC, not by the repository token.
+    # Scoped to this job rather than the workflow, so `quick` and `full` keep the default
+    # read-only token and nothing that runs test code can write a deployment. Note that naming
+    # any permission here sets *every* unnamed one to none, which is why `actions: read` appears:
+    # `download-artifact` reads the artifacts through the API, not off the filesystem. id-token
+    # is not optional either -- Pages deployments authenticate by OIDC, not by the repo token.
     permissions:
       pages: write
       id-token: write
+      contents: read
+      actions: read
     # Cancelling a deployment mid-flight can leave the site in a partial state, so this job opts
     # out of the workflow-level `cancel-in-progress` with its own group.
     concurrency:
@@ -145,6 +146,27 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
+      - name: Take the rendered site from `quick`
+        uses: actions/download-artifact@v8
+        with:
+          name: documentation
+          path: site
+
+      - name: Take the measured badge documents from `full`
+        # Into `site/badges/`, which is the path README.md points shields.io at. Moving this
+        # directory renames every badge URL, so tests/test_docs.py asserts the two agree.
+        uses: actions/download-artifact@v8
+        with:
+          name: badges
+          path: site/badges
+
+      - name: Package the site for Pages
+        # `upload-pages-artifact` differs from a plain upload in more than intent: it tars the
+        # directory and fixes the artifact name, both of which `deploy-pages` requires.
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
@@ -264,3 +286,24 @@ jobs:
 
       - name: sphinx -W
         run: python -m sphinx -W -b html docs docs/_build/html
+
+      - name: Write the badge documents from what this run measured
+        # This is the only job that can produce them. `coverage report` above has already failed
+        # the build if coverage fell below 100, so by the time this runs the number it publishes
+        # is one the gate accepted -- the badge cannot be greener than the build.
+        #
+        # `coverage json` reads the same .coverage data file the report step just used; it does
+        # not re-run anything.
+        run: |
+          coverage json -o coverage.json
+          python docs/badges/publish_badges.py coverage.json badges
+
+      - name: Hand the badge documents to the `pages` job
+        # Small, and short-lived: the `pages` job consumes this within the same run, and unlike
+        # the rendered site there is nothing here worth downloading by hand afterwards.
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: badges
+          path: badges
+          retention-days: 1

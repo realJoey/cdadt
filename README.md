@@ -1,13 +1,13 @@
 # cdadt
 
 [![CI](https://github.com/realJoey/cdadt/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/realJoey/cdadt/actions/workflows/ci.yml)
-![coverage](docs/badges/coverage.svg)
-![python](docs/badges/python.svg)
-![license](docs/badges/license.svg)
-![code style](docs/badges/code_style.svg)
-![linting](docs/badges/linting.svg)
-![docs](docs/badges/docs.svg)
-![version](docs/badges/version.svg)
+[![coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Frealjoey.github.io%2Fcdadt%2Fbadges%2Fcoverage.json)](https://realjoey.github.io/cdadt/verification.html)
+[![version](https://img.shields.io/endpoint?url=https%3A%2F%2Frealjoey.github.io%2Fcdadt%2Fbadges%2Fversion.json)](https://github.com/realJoey/cdadt/commits/main)
+[![python](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2FrealJoey%2Fcdadt%2Fmain%2Fpyproject.toml&query=%24.project%5B%22requires-python%22%5D&label=python&color=blue)](pyproject.toml)
+[![license](https://img.shields.io/github/license/realJoey/cdadt)](LICENSE)
+[![code style](https://img.shields.io/badge/code%20style-black-000000)](https://github.com/psf/black)
+[![linting](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fastral-sh%2Fruff%2Fmain%2Fassets%2Fbadge%2Fv2.json)](https://github.com/astral-sh/ruff)
+[![docs](https://img.shields.io/website?url=https%3A%2F%2Frealjoey.github.io%2Fcdadt%2F&label=docs&up_message=live&up_color=blue&down_message=down)](https://realjoey.github.io/cdadt/)
 
 A certification-driven aircraft design tool.
 
