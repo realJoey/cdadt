@@ -233,8 +233,9 @@ changes without any file in the repository changing.
 Continuous integration
 ----------------------
 
-``.github/workflows/ci.yml`` has two jobs, because the suite divides very unevenly and
-pretending otherwise makes every push expensive:
+``.github/workflows/ci.yml`` has three jobs. Two of them are gates, split because the suite
+divides very unevenly and pretending otherwise makes every push expensive; the third publishes
+the documentation:
 
 .. list-table::
    :header-rows: 1
@@ -262,14 +263,20 @@ for them, which is the whole reason the job finishes in a couple of minutes. It 
 despite being an extra -- three artefact tests draw real figures and *fail* rather than skip
 without it.
 
-**The rendered site is downloadable from every run.** ``quick`` builds ``docs/`` with
-``sphinx -W`` and uploads the result as an artifact named ``documentation``, kept for 90 days --
-the whole site, API reference and XDSM figures included. It is not a URL, and that is a platform
-limit rather than a choice: GitHub Pages on a **private** repository requires Pro or Team. The
-sibling ``penguino`` repository shows what ignoring that looks like -- its Pages deployment has
-failed on every recent run and no site was ever produced. Should this repository become public,
-the change is small and local: swap ``upload-artifact`` for ``upload-pages-artifact``, add a
-deploy job, and the same build becomes the published site.
+**The site this documentation builds into is published at**
+https://realjoey.github.io/cdadt/. ``quick`` builds ``docs/`` with ``sphinx -W``, and on ``main``
+the ``pages`` job deploys exactly that build -- the whole site, API reference and XDSM figures
+included. Pages is configured with GitHub Actions as its source rather than a branch, so nothing
+is ever committed to a ``gh-pages`` branch and no Jekyll pass runs over Sphinx's output.
+
+``pages`` needs ``quick``, and that dependency is the point: a commit cannot replace the live
+site unless ``black``, ``ruff``, the fast tests and ``sphinx -W`` all passed on it, so a red
+build leaves the previous site standing. It deliberately does *not* wait on ``full``, which
+rebuilds the same documentation from the same sources an hour later on a Windows runner.
+
+**The rendered site is also downloadable from every run**, on any branch, as an artifact named
+``documentation`` kept for 90 days. On a branch that artifact is the only way to see what the
+build produced, since the deployed site only ever shows ``main``.
 
 ``full`` is the real gate: every test, the 100% coverage threshold, and ``sphinx -W``, in the
 exact ``cdadt_env`` a developer uses. It runs on ``main``, on every pull request, and on request
@@ -300,9 +307,9 @@ pip resolve the ``dev`` extra would install its own ``black``, and a ``black`` t
 the one in ``cdadt_env`` formats different files. CI and a developer would then disagree about a
 gate whose whole purpose is to end that disagreement.
 
-Actions minutes on a private repository come out of a monthly allowance, and Windows runners
-consume it at twice the rate of Linux ones. That is the arithmetic behind the split: a branch
-push costs about two Linux minutes instead of about a hundred and forty Windows-equivalent ones.
+Actions minutes are free on a public repository, so the split no longer buys an allowance -- but
+it still buys the wall clock, which is what it was really for. A branch push costs about two
+Linux minutes instead of about ninety Windows ones.
 Superseded runs of the same ref cancel, and ``full`` carries a 150-minute ceiling against
 GitHub's six-hour default.
 
