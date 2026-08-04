@@ -1,7 +1,8 @@
 # The gates, run on GitHub's machines rather than on trust.
 #
-# Two jobs, because the suite divides very unevenly and pretending otherwise makes every push
-# expensive. Measured on this repository:
+# Two of these are gates and the third publishes: `quick` and `full` are split because the suite
+# divides very unevenly and pretending otherwise makes every push expensive, and `pages` puts
+# main's documentation build on https://realjoey.github.io/cdadt/. Measured on this repository:
 #
 #   unit + contract            253 tests    ~12 s    no conda, no compiled solver
 #   integration + verification + validation + slow
@@ -31,8 +32,8 @@ on:
   schedule:
     - cron: "0 6 * * 0"
 
-# A superseded run tells nobody anything, and Actions minutes on a private repository come out of
-# a monthly allowance.
+# A superseded run tells nobody anything. The `pages` job overrides this with its own group --
+# see there for why a deployment must not be cancelled halfway.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -94,25 +95,59 @@ jobs:
         # need openavl or OpenAeroStruct: both are imported lazily, behind an availability probe.
         run: python -m sphinx -W -b html docs docs/_build/html
 
-      - name: Publish the documentation site
-        # cdadt is a private repository, so GitHub Pages is not available to it -- Pages on a
-        # private repository requires Pro or Team, and the sibling penguino repository is the
-        # worked example of what happens otherwise: its Pages deployment has failed on every
-        # recent run and no site was ever produced.
-        #
-        # An artifact has no such restriction. The whole rendered site -- API reference, the XDSM
-        # figures, docs/truth.rst -- is downloadable from the run page for 90 days. That is a
-        # smaller thing than a URL, but it is a real one, whereas a Pages job here would be a
-        # permanently red check that published nothing.
-        #
-        # If this repository ever becomes public, the change is small and local: swap this step
-        # for `actions/upload-pages-artifact` and add a deploy job. The build above is already
-        # exactly what Pages would serve.
+      - name: Keep the built site downloadable from the run
+        # Every branch, not just main. The deployed site below only ever shows main, so on a
+        # branch this artifact is the only way to look at what the documentation build produced
+        # -- API reference, the XDSM figures, docs/truth.rst -- before it is merged.
         uses: actions/upload-artifact@v7
         with:
           name: documentation
           path: docs/_build/html
           retention-days: 90
+
+      - name: Package the site for Pages
+        # main only: this artifact exists to be consumed by the `pages` job below, which does not
+        # run anywhere else, and uploading a second copy of the site on every branch push would
+        # buy nothing. `upload-pages-artifact` differs from the step above in more than intent --
+        # it tars the directory and fixes the artifact name, both of which `deploy-pages`
+        # requires.
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs/_build/html
+
+  pages:
+    name: pages
+    # The published site is main's, and only main's. `needs: quick` is what makes that safe: the
+    # deployment cannot happen unless black, ruff, the fast tests and `sphinx -W` all passed on
+    # the same commit, so a red build leaves the previous site standing rather than replacing it
+    # with a broken one.
+    #
+    # Note this deliberately does not wait on `full`. `full` takes over an hour on a Windows
+    # runner and rebuilds the same documentation from the same sources; blocking publication on
+    # it would mean the site trails main by an hour for no gain in what gets served.
+    needs: quick
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    # Scoped to this job rather than the workflow, so `quick` and `full` keep the default token
+    # and nothing that runs test code can write a deployment. id-token is not optional: Pages
+    # deployments authenticate by OIDC, not by the repository token.
+    permissions:
+      pages: write
+      id-token: write
+    # Cancelling a deployment mid-flight can leave the site in a partial state, so this job opts
+    # out of the workflow-level `cancel-in-progress` with its own group.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
 
   full:
     name: full
