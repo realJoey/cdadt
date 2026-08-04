@@ -453,6 +453,11 @@ docs/               Sphinx
 
 ## Documentation
 
+The rendered site is at **<https://realjoey.github.io/cdadt/>**, built from `docs/` on every push
+to `main` and published only if `black`, `ruff`, the fast tests and `sphinx -W` all passed on that
+commit. It includes the generated API reference, which the sources below do not carry. To build it
+locally: `python -m sphinx -W -b html docs docs/_build/html`.
+
 | Page | Contents |
 |---|---|
 | `install.rst` | Environment setup, and why each flag is required |
