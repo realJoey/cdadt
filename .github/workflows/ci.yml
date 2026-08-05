@@ -4,11 +4,18 @@
 # divides very unevenly and pretending otherwise makes every push expensive, and `pages` puts
 # main's documentation build on https://realjoey.github.io/cdadt/. Measured on this repository:
 #
-#   unit + contract            253 tests    ~12 s    no conda, no compiled solver
+#   unit + contract            267 tests    ~1 min   no conda, no compiled solver
 #   integration + verification + validation + slow
-#                              124 tests    ~24 min  converges real missions, runs IPOPT
+#                              124 tests              converges real missions, runs IPOPT
 #
-# Two thirds of the tests cost about a thousandth of the time. So `quick` runs on every push, on
+#   whole suite (391)          13 min on a developer desktop, 80 min in `full` on a runner
+#
+# Those are measured on the runner where they run -- `quick`'s minute is its own step time on
+# ubuntu, and the 80 minutes is `full`'s pytest step on the last green run (2026-08-02). The 6x
+# between desktop and runner is the reason the ceiling below is set where it is: a figure taken
+# from a developer machine is not a bound on this job.
+#
+# Two thirds of the tests cost a small fraction of the time. So `quick` runs on every push, on
 # any branch, and is meant to come back before you have switched windows. `full` is the real
 # gate -- every test, the 100% coverage threshold, and the documentation build -- and runs where
 # the result is actually load-bearing: `main`, pull requests, and on request.
@@ -177,12 +184,15 @@ jobs:
     # request` is the point -- it means nothing reaches main without having passed this.
     if: github.ref == 'refs/heads/main' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
-    # The suite takes ~25 minutes on a fast desktop and a cloud runner is slower on the
-    # single-threaded Newton solves that dominate it. The ceiling is set well above the expected
-    # hour-and-a-quarter rather than close to it: killing a run that was going to pass wastes
-    # everything it had already done and reports red for it. It exists only so a wedged job
-    # cannot burn GitHub's six-hour default.
-    timeout-minutes: 150
+    # The suite takes 13 minutes on a fast desktop and 80 in this job: a cloud runner is about six
+    # times slower on the single-threaded Newton solves that dominate it. The ceiling was 150, and
+    # that was set from the desktop figure rather than this one -- 70 minutes of headroom over a
+    # measured 80-minute pass. A run on 2026-08-04 took longer than usual, hit the ceiling at 77%
+    # of the suite, and was killed; because the job died mid-run, the failure report pytest prints
+    # at the end never printed, and which test had failed could not be recovered from the log at
+    # all. The ceiling has to be far enough above the measurement that reaching it means *wedged*,
+    # not merely *slow*, because killing a run destroys the evidence for why it was slow.
+    timeout-minutes: 330
     defaults:
       run:
         shell: bash -el {0}
@@ -280,8 +290,18 @@ jobs:
       - name: The full suite, under coverage
         # `coverage report` exits non-zero below fail_under = 100, so this step is what the
         # coverage badge stands on. A partial run must not be able to report itself as a pass.
+        #
+        # `-v`, not `-q`, and the reason is diagnostic rather than cosmetic. Under `-q` a failure
+        # is one `F` in a row of dots and is named only in the summary pytest writes when the run
+        # ends -- so a run that is killed before it ends reports that something failed while
+        # destroying the record of what. That happened here on 2026-08-04. `-v` names every test
+        # on its own line as it finishes, which costs a longer log and buys the failing test's
+        # identity even from a run nobody let finish.
+        #
+        # `--durations` for the same reason: this job is six times slower than a desktop and the
+        # next argument about that should start from a per-test profile rather than from a total.
         run: |
-          coverage run -m pytest -q
+          coverage run -m pytest -v --durations=30
           coverage report
 
       - name: sphinx -W
