@@ -1,0 +1,12 @@
+# The pinned engine deck, and the checksums that gate it.
+#
+# The zips are binary and must never be touched by line-ending conversion -- a single byte
+# changed is a different engine, and the checksum would catch it, but only after a three-hour
+# run. `binary` also stops git trying to diff 5.7 MB of compressed pickle.
+#
+# SHA256SUMS is held at LF for a sharper reason. It is checked out on a Windows runner, where
+# git would otherwise write CRLF, and `sha256sum -c` then reads every filename with a trailing
+# carriage return and reports "No such file or directory" for all three. The CI step strips CR
+# before checking as well, so this is the belt to that pair of braces.
+pinned/openconcept-cfm56-deck/*.zip binary
+pinned/openconcept-cfm56-deck/SHA256SUMS text eol=lf
