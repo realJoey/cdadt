@@ -241,6 +241,37 @@ jobs:
           git clone https://github.com/danielenriquez59/openavl.git ../openavl
           git -C ../openavl checkout 647d556abd3d51b57cf5c80bc020a248e5e7d4b5
 
+      - name: Give this runner the engine deck the numbers were validated against
+        # A pinned input, exactly like the three commits above, and here for the same reason --
+        # except that this one cannot be fetched from anywhere. See its README for the full
+        # provenance and the measurements behind it.
+        #
+        # OpenConcept fits the CFM56 deck as a Kriging surrogate over its shipped .npy data and
+        # caches the fit to zips that are gitignored and absent from package_data. So a fresh
+        # clone -- this job, every single time -- refits, while a long-lived working copy keeps
+        # whatever it fitted once. That fit is a SciPy SLSQP solve, so it follows the
+        # floating-point path of the machine performing it: measured 2026-08-07, this runner's
+        # thrust surface came out 3.0e-5 from the developer machine's, which moved the baseline
+        # aeroplane 8.1e-6 in MTOW before an optimizer touched it and left IPOPT unconverged
+        # after 40 iterations on a study that needs 25 from the validated baseline. Refitting
+        # cannot fix that -- two cold fits on two machines disagree too -- so it is transported.
+        #
+        # Copied before OpenConcept is installed, so nothing can import it and refit first.
+        # `.gitignore` in that clone excludes `*.zip`, so this leaves the tree clean and
+        # `test_the_openconcept_working_tree_is_clean` still means what it says -- the `git
+        # status` below is there to keep that honest.
+        run: |
+          cp pinned/openconcept-cfm56-deck/*.zip ../openconcept/openconcept/propulsion/empirical_data/cfm56/
+          # A gate, not a diagnostic. A silent mismatch here means the whole suite flew an engine
+          # nobody validated, and every number it printed would look entirely reasonable.
+          # `sed` strips any carriage return before checking. .gitattributes already holds
+          # SHA256SUMS at LF, but this job runs on Windows and a checkout that ever writes CRLF
+          # would otherwise give every filename a trailing \r and fail all three lines with "No
+          # such file or directory" -- a line-ending bug wearing the costume of a corrupt deck.
+          ( cd ../openconcept/openconcept/propulsion/empirical_data/cfm56 \
+            && sed 's/\r$//' "$GITHUB_WORKSPACE/pinned/openconcept-cfm56-deck/SHA256SUMS" | sha256sum -c - )
+          git -C ../openconcept status --short
+
       - name: Install OpenConcept
         # --no-deps, or pip acts on OpenConcept's declared numpy<2 bound and downgrades the
         # conda-forge stack this environment was solved for. See docs/install.rst.
